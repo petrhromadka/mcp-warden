@@ -1,0 +1,132 @@
+{
+  "server": "notion",
+  "tools": [
+    {
+      "name": "API-post-page",
+      "description": "Create a page",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "parent": {
+            "type": "object",
+            "description": "The parent page or database where the new page is inserted, represented as a JSON object with a page_id or database_id key.",
+            "properties": {
+              "page_id": {
+                "type": "string",
+                "description": "Page ID, 32 hex characters with or without dashes",
+                "format": "uuid"
+              },
+              "database_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          "properties": {
+            "type": "object",
+            "description": "The values of the page's properties. If the parent is a database, then the schema must match the parent database's properties."
+          },
+          "children": {
+            "type": "array",
+            "description": "The content blocks to be added to the page.",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "parent",
+          "properties"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "API-get-block-children",
+      "description": "Retrieve block children",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "block_id": {
+            "type": "string",
+            "description": "Identifier for a block. Also accepts a page ID.",
+            "format": "uuid"
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "The number of items from the full list desired in the response. Maximum: 100"
+          },
+          "start_cursor": {
+            "type": "string",
+            "description": "If supplied, this endpoint will return a page of results starting after the cursor provided."
+          }
+        },
+        "required": [
+          "block_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "API-post-search",
+      "description": "Search by title",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The text that the API compares page and database titles against."
+          },
+          "filter": {
+            "type": "object",
+            "description": "A set of criteria, `value` and `property` keys, that limits the results to either only pages or only databases.",
+            "properties": {
+              "value": {
+                "type": "string",
+                "enum": [
+                  "page",
+                  "database"
+                ]
+              },
+              "property": {
+                "type": "string",
+                "enum": [
+                  "object"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "API-delete-a-block",
+      "description": "Delete a block",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "block_id": {
+            "type": "string",
+            "description": "Identifier for a block",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "block_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      }
+    }
+  ]
+}

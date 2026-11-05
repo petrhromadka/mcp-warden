@@ -1,0 +1,154 @@
+{
+  "server": "everything",
+  "tools": [
+    {
+      "name": "echo",
+      "description": "Echoes back the input",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Message to echo"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "add",
+      "description": "Adds two numbers",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "a": {
+            "type": "number",
+            "description": "First number"
+          },
+          "b": {
+            "type": "number",
+            "description": "Second number"
+          }
+        },
+        "required": [
+          "a",
+          "b"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "printEnv",
+      "description": "Prints all environment variables, helpful for debugging MCP server configuration",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "longRunningOperation",
+      "description": "Demonstrates a long running operation with progress notifications",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "duration": {
+            "type": "number",
+            "description": "Duration of the operation in seconds",
+            "default": 10
+          },
+          "steps": {
+            "type": "number",
+            "description": "Number of steps in the operation",
+            "default": 5
+          }
+        }
+      }
+    },
+    {
+      "name": "sampleLLM",
+      "description": "Samples from an LLM using MCP's sampling feature",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "The prompt to send to the LLM"
+          },
+          "maxTokens": {
+            "type": "number",
+            "description": "Maximum number of tokens to generate",
+            "default": 100
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "annotatedMessage",
+      "description": "Demonstrates how annotations can be used to provide metadata about content",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageType": {
+            "type": "string",
+            "enum": [
+              "error",
+              "success",
+              "debug"
+            ],
+            "description": "Type of message to demonstrate different annotation patterns"
+          },
+          "includeImage": {
+            "type": "boolean",
+            "description": "Whether to include an example image",
+            "default": false
+          }
+        },
+        "required": [
+          "messageType"
+        ]
+      }
+    }
+  ],
+  "prompts": [
+    {
+      "name": "simple_prompt",
+      "description": "A prompt without arguments"
+    },
+    {
+      "name": "complex_prompt",
+      "description": "A prompt with arguments",
+      "arguments": [
+        {
+          "name": "temperature",
+          "description": "Temperature setting",
+          "required": true
+        },
+        {
+          "name": "style",
+          "description": "Output style",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "uri": "test://static/resource/1",
+      "name": "Resource 1",
+      "mimeType": "text/plain"
+    }
+  ]
+}

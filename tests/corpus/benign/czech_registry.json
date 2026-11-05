@@ -1,0 +1,43 @@
+{
+  "server": "rejstrik",
+  "tools": [
+    {
+      "name": "najdi_firmu",
+      "description": "Vyhledá firmu v českém obchodním rejstříku podle IČO nebo názvu. Vrací název, sídlo, právní formu a datum vzniku. Pro přesné výsledky zadejte osmimístné IČO (např. 27082440). Údaje jsou veřejné a pocházejí z rejstříku ARES: https://ares.gov.cz.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ico": {
+            "type": "string",
+            "description": "Osmimístné identifikační číslo osoby, např. 27082440",
+            "pattern": "^[0-9]{8}$"
+          },
+          "nazev": {
+            "type": "string",
+            "description": "Část obchodního jména, nerozlišuje velikost písmen"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "title": "Najdi firmu"
+      }
+    },
+    {
+      "name": "pocasi_praha",
+      "description": "Vrátí aktuální počasí v Praze: teplotu, srážky a rychlost větru. Příklad: „Jaké je dnes počasí v Praze?“ Všechny údaje jsou ve stupních Celsia a kilometrech za hodinu.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "den": {
+            "type": "string",
+            "description": "Den ve formátu RRRR-MM-DD; výchozí je dnešní datum"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

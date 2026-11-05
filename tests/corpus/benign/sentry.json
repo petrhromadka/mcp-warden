@@ -1,0 +1,88 @@
+{
+  "server": "sentry",
+  "tools": [
+    {
+      "name": "get_issue_details",
+      "description": "Retrieve and analyze a Sentry issue by ID or URL. Use this tool when you need to:\n- Investigate a specific production error\n- Get stacktraces and related events\n- Understand when an issue first and last occurred\n\n<examples>\n### Get details for a specific issue\n```\nget_issue_details(organizationSlug='my-organization', issueId='PROJECT-123')\n```\n</examples>\n\n<hints>\n- If the user provides an issueUrl, you can omit organizationSlug and issueId.\n</hints>",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "organizationSlug": {
+            "type": "string",
+            "description": "The organization's slug. You can find a existing list of organizations in the `find_organizations()` tool."
+          },
+          "issueId": {
+            "type": "string",
+            "description": "The Issue ID. e.g. `PROJECT-1Z43`"
+          },
+          "issueUrl": {
+            "type": "string",
+            "description": "The URL of the issue. e.g. https://my-organization.sentry.io/issues/PROJECT-1Z43"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search_issues",
+      "description": "Search for grouped issues/problems in Sentry. Returns a list of issues with their metadata.\n\nUse this tool when you need to search for issues matching a natural-language query. DO NOT use this for individual events; use `search_events` for that.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "organizationSlug": {
+            "type": "string"
+          },
+          "naturalLanguageQuery": {
+            "type": "string",
+            "description": "Natural language description of issues to search for, e.g. 'unresolved errors from the last 24 hours'"
+          },
+          "limit": {
+            "type": "number",
+            "default": 10
+          }
+        },
+        "required": [
+          "organizationSlug",
+          "naturalLanguageQuery"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update_issue",
+      "description": "Update an issue's status or assignment in Sentry. Be careful: resolving an issue hides it from the default view.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "resolvedInNextRelease",
+              "unresolved",
+              "ignored"
+            ]
+          },
+          "assignedTo": {
+            "type": "string",
+            "description": "Actor to assign, e.g. `user:123456` or `team:789`"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    }
+  ]
+}

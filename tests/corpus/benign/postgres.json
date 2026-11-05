@@ -1,0 +1,35 @@
+{
+  "server": "postgres",
+  "tools": [
+    {
+      "name": "query",
+      "description": "Run a read-only SQL query",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "resources": [
+    {
+      "uri": "postgres://localhost/users/schema",
+      "name": "\"users\" database schema",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "postgres://localhost/orders/schema",
+      "name": "\"orders\" database schema",
+      "mimeType": "application/json"
+    }
+  ]
+}
