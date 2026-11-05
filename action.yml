@@ -1,0 +1,153 @@
+name: mcp-warden
+description: Scan MCP servers and MCP client configs for tool poisoning, rug pulls, shadowing and leaked secrets.
+author: Petr Hromádka
+branding:
+  icon: shield
+  color: gray-dark
+
+inputs:
+  version:
+    description: Release tag to install (for example v0.1.0), or "latest".
+    default: latest
+  args:
+    description: Arguments passed to mcp-warden (whitespace separated).
+    default: scan --no-discover
+  paths:
+    description: Config files or directories to scan (whitespace separated).
+    default: ""
+  sarif:
+    description: >-
+      Write SARIF to mcp-warden.sarif and upload it to code scanning. The calling job needs
+      "security-events: write".
+    default: "true"
+  fail-on:
+    description: Lowest severity that fails the step (none, info, low, medium, high, critical).
+    default: high
+
+outputs:
+  sarif-file:
+    description: Path of the SARIF report, empty when sarif is false or no report was written.
+    value: ${{ steps.scan.outputs.sarif-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install mcp-warden
+      id: install
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        REPOSITORY: petrhromadka/mcp-warden
+      run: |
+        set -euo pipefail
+
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64)    target=x86_64-unknown-linux-musl;   ext=tar.gz ;;
+          Linux-ARM64)  target=aarch64-unknown-linux-musl;  ext=tar.gz ;;
+          macOS-X64)    target=x86_64-apple-darwin;         ext=tar.gz ;;
+          macOS-ARM64)  target=aarch64-apple-darwin;        ext=tar.gz ;;
+          Windows-X64)  target=x86_64-pc-windows-msvc;      ext=zip ;;
+          Windows-ARM64) target=aarch64-pc-windows-msvc;    ext=zip ;;
+          *) echo "::error::unsupported runner ${RUNNER_OS}-${RUNNER_ARCH}"; exit 1 ;;
+        esac
+
+        base="https://github.com/${REPOSITORY}/releases"
+        if [ "$VERSION" = "latest" ]; then
+          base="${base}/latest/download"
+        else
+          case "$VERSION" in v*) ;; *) VERSION="v${VERSION}" ;; esac
+          if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::invalid version '${VERSION}'"
+            exit 1
+          fi
+          base="${base}/download/${VERSION}"
+        fi
+
+        archive="mcp-warden-${target}.${ext}"
+        work="$(cd "$RUNNER_TEMP" && pwd)/mcp-warden-install"
+        rm -rf "$work"
+        mkdir -p "$work/bin"
+
+        curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+          --output "$work/$archive" "${base}/${archive}"
+        curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
+          --output "$work/SHA256SUMS" "${base}/SHA256SUMS"
+
+        expected="$(awk -v f="$archive" '$2 == f { print $1 }' "$work/SHA256SUMS")"
+        if [ -z "$expected" ]; then
+          echo "::error::${archive} is not listed in SHA256SUMS"
+          exit 1
+        fi
+        if command -v sha256sum >/dev/null 2>&1; then
+          actual="$(sha256sum "$work/$archive" | awk '{ print $1 }')"
+        else
+          actual="$(shasum -a 256 "$work/$archive" | awk '{ print $1 }')"
+        fi
+        if [ "$expected" != "$actual" ]; then
+          echo "::error::checksum mismatch for ${archive}: expected ${expected}, got ${actual}"
+          exit 1
+        fi
+
+        if [ "$ext" = "zip" ]; then
+          # shellcheck disable=SC2016 # $env: is PowerShell syntax
+          ARCHIVE_WIN="$(cygpath -w "$work/$archive")" DEST_WIN="$(cygpath -w "$work/bin")" \
+            pwsh -NoProfile -Command 'Expand-Archive -LiteralPath $env:ARCHIVE_WIN -DestinationPath $env:DEST_WIN -Force'
+          bin="$work/bin/mcp-warden.exe"
+        else
+          tar -xzf "$work/$archive" -C "$work/bin"
+          bin="$work/bin/mcp-warden"
+        fi
+        test -f "$bin"
+        echo "bin=${bin}" >> "$GITHUB_OUTPUT"
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        BIN: ${{ steps.install.outputs.bin }}
+        ARGS: ${{ inputs.args }}
+        SCAN_PATHS: ${{ inputs.paths }}
+        SARIF: ${{ inputs.sarif }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        set -o pipefail
+        set -f # no pathname expansion while splitting the inputs below
+
+        read -r -a arg_list <<< "$ARGS"
+        read -r -a path_list <<< "$SCAN_PATHS"
+
+        cmd=("$BIN" "${arg_list[@]}" --fail-on "$FAIL_ON")
+        sarif_file=""
+        if [ "$SARIF" = "true" ]; then
+          sarif_file="mcp-warden.sarif"
+          cmd+=(--format sarif --output "$sarif_file")
+        fi
+        if [ "${#path_list[@]}" -gt 0 ]; then
+          cmd+=(-- "${path_list[@]}")
+        fi
+
+        "${cmd[@]}"
+        code=$?
+
+        # Exit 1 means findings reached --fail-on; the SARIF report is still uploaded first.
+        if [ -n "$sarif_file" ] && [ ! -f "$sarif_file" ]; then
+          sarif_file=""
+        fi
+        {
+          echo "exit-code=${code}"
+          echo "sarif-file=${sarif_file}"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Upload SARIF to code scanning
+      if: ${{ always() && steps.scan.outputs.sarif-file != '' }}
+      uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif-file }}
+        category: mcp-warden
+
+    - name: Fail on findings
+      if: ${{ always() && steps.scan.outputs.exit-code != '' && steps.scan.outputs.exit-code != '0' }}
+      shell: bash
+      env:
+        EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+      run: exit "$EXIT_CODE"
