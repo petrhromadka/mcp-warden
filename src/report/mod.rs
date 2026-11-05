@@ -246,6 +246,95 @@ mod tests {
         );
     }
 
+    fn sarif_of(findings: Vec<Finding>, errors: Vec<String>) -> Value {
+        let result = ScanResult {
+            tool_version: "1.2.3",
+            findings,
+            errors,
+            ..ScanResult::default()
+        };
+        serde_json::from_str(&render(&result, Format::Sarif, false)).unwrap()
+    }
+
+    #[test]
+    fn sarif_reports_errors_as_failed_invocation() {
+        let ok = sarif_of(vec![], vec![]);
+        let inv = &ok["runs"][0]["invocations"][0];
+        assert_eq!(inv["executionSuccessful"], true);
+        assert_eq!(inv["toolExecutionNotifications"], serde_json::json!([]));
+        let bad = sarif_of(vec![], vec!["cannot parse a\u{1b}.json".to_owned()]);
+        let inv = &bad["runs"][0]["invocations"][0];
+        assert_eq!(inv["executionSuccessful"], false);
+        let n = &inv["toolExecutionNotifications"][0];
+        assert_eq!(n["level"], "error");
+        assert_eq!(n["message"]["text"], "cannot parse a\\u{1b}.json");
+    }
+
+    #[test]
+    fn sarif_fingerprints_separate_files_evidence_and_pointers() {
+        let at = |file: &str, pointer: &str, evidence: &str| {
+            let f = finding(
+                "MW001",
+                Severity::High,
+                "s",
+                Some(file),
+                Some(pointer),
+                "m",
+                evidence,
+            );
+            let sarif = sarif_of(vec![f], vec![]);
+            sarif["runs"][0]["results"][0]["partialFingerprints"]["mcpWarden/v1"].to_string()
+        };
+        let base = at("a.json", "tools/x", "evil");
+        assert_eq!(base, at("a.json", "tools/x", "evil"));
+        assert_ne!(base, at("b.json", "tools/x", "evil"));
+        assert_ne!(base, at("a.json", "tools/y", "evil"));
+        assert_ne!(base, at("a.json", "tools/x", "evil changed"));
+    }
+
+    #[test]
+    fn sarif_absolute_paths_become_file_uris() {
+        let uri = |file: &str| {
+            let f = finding("MW001", Severity::High, "s", Some(file), None, "m", "");
+            let sarif = sarif_of(vec![f], vec![]);
+            sarif["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]
+                ["uri"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        };
+        assert_eq!(uri("C:\\x\\y.json"), "file:///C:/x/y.json");
+        assert_eq!(uri("C:/x/y z.json"), "file:///C:/x/y%20z.json");
+        assert_eq!(uri("/home/u/.mcp.json"), "file:///home/u/.mcp.json");
+        assert_eq!(uri("rel\\dir\\.mcp.json"), "rel/dir/.mcp.json");
+    }
+
+    #[test]
+    fn markdown_breaks_autolinks_in_untrusted_cells() {
+        let f = finding(
+            "MW001",
+            Severity::High,
+            "https://evil.example/srv",
+            None,
+            None,
+            "see HTTP://evil.example and www.evil.example",
+            "https://evil.example/x",
+        );
+        let result = ScanResult {
+            findings: vec![f],
+            errors: vec!["fetch https://evil.example failed".to_owned()],
+            ..ScanResult::default()
+        };
+        let md = render(&result, Format::Markdown, false);
+        assert!(!md.to_ascii_lowercase().contains("http://"), "{md}");
+        assert!(!md.contains("https://evil.example/srv"), "{md}");
+        assert!(!md.contains("fetch https://"), "{md}");
+        assert!(!md.contains("www.evil"), "{md}");
+        assert!(md.contains(r"https\://evil.example/srv"), "{md}");
+        // Evidence sits in a code span, which renderers never autolink.
+        assert!(md.contains("`https://evil.example/x`"), "{md}");
+    }
+
     #[test]
     fn markdown_escapes_hostile_strings() {
         let md = render(&sample(), Format::Markdown, false);

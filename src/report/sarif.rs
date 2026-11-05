@@ -62,13 +62,39 @@ fn encode_uri(s: &str, keep_path_chars: bool) -> String {
     out
 }
 
+/// Stable across runs and distinct per file, server, pointer and evidence: two findings at one
+/// pointer do not collide, and a changed definition opens a new alert.
 fn fingerprint(f: &Finding) -> String {
     let pointer = f.location.pointer.as_deref().unwrap_or("");
-    let digest = Sha256::digest(format!("{}|{}|{pointer}", f.rule_id, f.server).as_bytes());
+    let file = f
+        .location
+        .file
+        .as_deref()
+        .map(path_string)
+        .unwrap_or_default();
+    let digest = Sha256::digest(
+        format!("{}|{file}|{}|{pointer}|{}", f.rule_id, f.server, f.evidence).as_bytes(),
+    );
     digest.iter().fold(String::with_capacity(64), |mut s, b| {
         let _ = write!(s, "{b:02x}");
         s
     })
+}
+
+/// URI reference for a path with `/` separators: absolute paths (`C:/x`, `/x`, `//host/share`)
+/// become `file:` URIs, relative paths stay relative.
+fn file_uri(path: &str) -> String {
+    let encoded = encode_uri(path, true);
+    let bytes = path.as_bytes();
+    if bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/' {
+        format!("file:///{encoded}")
+    } else if path.starts_with("//") {
+        format!("file:{encoded}")
+    } else if path.starts_with('/') {
+        format!("file://{encoded}")
+    } else {
+        encoded
+    }
 }
 
 fn message_text(f: &Finding) -> String {
@@ -88,7 +114,7 @@ fn location_json(f: &Finding) -> Value {
     let (uri, with_region) = match &f.location.file {
         Some(file) => {
             let path = path_string(file).replace('\\', "/");
-            (encode_uri(&snippet(&path, MAX_PATH), true), true)
+            (file_uri(&snippet(&path, MAX_PATH)), true)
         }
         None => (
             format!(
@@ -127,6 +153,11 @@ pub(super) fn render(result: &ScanResult) -> String {
             r
         })
         .collect();
+    let notifications: Vec<Value> = result
+        .errors
+        .iter()
+        .map(|e| json!({"level": "error", "message": {"text": snippet(e, MAX_MESSAGE)}}))
+        .collect();
     let sarif = json!({
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "version": "2.1.0",
@@ -139,6 +170,10 @@ pub(super) fn render(result: &ScanResult) -> String {
                     "rules": rules.iter().map(rule_json).collect::<Vec<_>>(),
                 },
             },
+            "invocations": [{
+                "executionSuccessful": result.errors.is_empty(),
+                "toolExecutionNotifications": notifications,
+            }],
             "results": results,
         }],
     });

@@ -9,7 +9,29 @@ use crate::model::{Finding, ScanResult};
 use crate::rules::all_rules;
 use crate::text::snippet;
 
-/// Sanitize `s` and neutralize Markdown/HTML syntax and `@mentions` for use in a table cell.
+/// Break `scheme://` and `www.` so renderers do not turn untrusted text into clickable links.
+fn break_autolinks(s: &str) -> String {
+    let lower = s.to_ascii_lowercase();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < s.len() {
+        if lower[i..].starts_with("://") {
+            out.push_str("\\://");
+            i += 3;
+        } else if lower[i..].starts_with("www.") {
+            out.push_str(&s[i..i + 3]);
+            out.push_str("\\.");
+            i += 4;
+        } else if let Some(c) = s[i..].chars().next() {
+            out.push(c);
+            i += c.len_utf8();
+        }
+    }
+    out
+}
+
+/// Sanitize `s` and neutralize Markdown/HTML syntax, links and `@mentions` for use in a table
+/// cell.
 fn escape(s: &str, max: usize) -> String {
     let mut out = String::new();
     for c in snippet(s, max).chars() {
@@ -26,7 +48,7 @@ fn escape(s: &str, max: usize) -> String {
             _ => out.push(c),
         }
     }
-    out
+    break_autolinks(&out)
 }
 
 /// Sanitize `s` and wrap it in an inline code span whose fence is longer than any backtick run
