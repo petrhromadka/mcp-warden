@@ -35,11 +35,18 @@ pre-commit or in CI, and the same input always gives the same report.
 
 ## Quick start
 
-Build from source (prebuilt binaries come with the first release):
+Download a prebuilt binary from the [latest release](https://github.com/petrhromadka/mcp-warden/releases/latest)
+(Linux and macOS on x86_64 and ARM64 as `.tar.gz`, Windows as `.zip`), check it, and put it on your `PATH`:
 
 ```bash
-cargo install --git https://github.com/petrhromadka/mcp-warden --locked
+curl -LO https://github.com/petrhromadka/mcp-warden/releases/latest/download/mcp-warden-x86_64-unknown-linux-musl.tar.gz
+curl -LO https://github.com/petrhromadka/mcp-warden/releases/latest/download/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+gh attestation verify mcp-warden-x86_64-unknown-linux-musl.tar.gz -R petrhromadka/mcp-warden   # build provenance
+tar xzf mcp-warden-x86_64-unknown-linux-musl.tar.gz
 ```
+
+Or build from source: `cargo install --git https://github.com/petrhromadka/mcp-warden --locked`.
 
 Scan every MCP config it can find under your home directory and the current project:
 
