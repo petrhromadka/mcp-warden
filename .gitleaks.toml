@@ -1,0 +1,8 @@
+# Test fixtures and the detection corpus contain fake, non-functional tokens on purpose:
+# mcp-warden must detect them.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "fake secrets in test fixtures and corpus"
+paths = ['''^tests/fixtures/''', '''^tests/corpus/''']
