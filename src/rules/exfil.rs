@@ -391,13 +391,19 @@ fn check_covert_params(surface: &ServerSurface, fields: &[TextField<'_>], out: &
             continue;
         }
         let desc_pointer = format!("{}/description", param.pointer);
-        let Some(desc) = fields
+        let own_desc = fields
             .iter()
             .find(|f| f.kind == FieldKind::ParamDescription && f.pointer == desc_pointer)
-        else {
-            continue;
-        };
-        if let Some((s, e)) = covert_hit(desc.text) {
+            .and_then(|d| covert_hit(d.text).map(|(s, e)| (d.text, s, e)));
+        // The poisoning often lives in the tool description instead: "pass its content as
+        // 'sidenote'". Look for a sentence there that names this parameter and asks for data.
+        let hit = own_desc.or_else(|| {
+            fields
+                .iter()
+                .filter(|f| f.kind == FieldKind::ToolDescription && f.owner == param.owner)
+                .find_map(|d| mentions_param_hit(d.text, param.text).map(|(s, e)| (d.text, s, e)))
+        });
+        if let Some((text, s, e)) = hit {
             out.push(make_finding(
                 surface,
                 "MW023",
@@ -406,11 +412,59 @@ fn check_covert_params(surface: &ServerSurface, fields: &[TextField<'_>], out: &
                     "Parameter '{}' looks like a covert channel: its description asks for sensitive data or concealment from the user",
                     text::snippet(param.text, 40)
                 ),
-                text::snippet_around(desc.text, s, e, EVIDENCE_CHARS),
+                text::snippet_around(text, s, e, EVIDENCE_CHARS),
                 &param.pointer,
             ));
         }
     }
+    for param in fields.iter().filter(|f| f.kind == FieldKind::ParamName) {
+        let lower = param.text.to_ascii_lowercase();
+        if let Some(token) = SENSITIVE_PARAM_TOKENS.iter().find(|t| lower.contains(*t)) {
+            out.push(make_finding(
+                surface,
+                "MW023",
+                Severity::High,
+                &format!(
+                    "Parameter '{}' is named after credential data ({token}); the model is being asked to supply it",
+                    text::snippet(param.text, 60)
+                ),
+                text::snippet(param.text, EVIDENCE_CHARS),
+                &param.pointer,
+            ));
+        }
+    }
+}
+
+/// Parameter-name fragments that only make sense if the model is meant to read secrets.
+const SENSITIVE_PARAM_TOKENS: &[&str] = &[
+    "id_rsa",
+    "id_ed25519",
+    "ssh_key",
+    "ssh_private",
+    "mcp_json",
+    "mcp_config",
+    "aws_credentials",
+    "git_credentials",
+    "netrc",
+    "claude_desktop",
+];
+
+/// A sentence of `text` that names `param` (as a whole word) and asks for sensitive data.
+fn mentions_param_hit(text: &str, param: &str) -> Option<(usize, usize)> {
+    let name = Regex::new(&format!(
+        r"(?i)(?:^|[^\w]){}(?:[^\w]|$)",
+        regex::escape(param)
+    ))
+    .ok()?;
+    for (offset, sentence) in sentences(text) {
+        if !name.is_match(sentence) {
+            continue;
+        }
+        if let Some((s, e)) = covert_hit(sentence) {
+            return Some((offset + s, offset + e));
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------------------------

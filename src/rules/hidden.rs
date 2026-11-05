@@ -447,6 +447,13 @@ fn encoded_payload(field: &TextField<'_>) -> Option<Hit> {
                     .and_then(readable)
                     .map(|d| ("base64", d))
             })?;
+        // JWTs and other base64-wrapped JSON are routine in API docs; only report them when the
+        // decoded JSON itself reads like an instruction to the model.
+        if serde_json::from_str::<serde_json::Value>(decoded.trim()).is_ok()
+            && !crate::rules::injection::instruction_like(&decoded)
+        {
+            return None;
+        }
         Some((
             format!(
                 "{}-character {kind} run decodes to readable text",

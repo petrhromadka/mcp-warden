@@ -157,7 +157,7 @@ static COERCION: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 // every mail to X instead" fires.
 static SHADOW_STRONG: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(?:redirect(?:s|ed|ing)?|bcc|cc)\b|\balso\s+(?:send|cc|bcc|forward|copy|attach|include)\b|\bchange[sd]?\s+(?:the\s+)?(?:recipient|behaviou?r|destination|target|address)",
+        r"(?i)\b(?:redirect(?:s|ed|ing)?|bcc|cc)\b|\balso\s+(?:send|cc|bcc|forward|copy|attach|include)\b|\b(?:change[sd]?|override[sd]?|modif(?:y|ies|ied))\s+(?:the\s+)?(?:recipient|behaviou?r|destination|target|address)",
     )
     .expect("valid built-in regex")
 });
