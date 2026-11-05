@@ -26,6 +26,10 @@ pub use dump::load_dump;
 const PROTOCOL_VERSION: &str = "2025-06-18";
 /// Longest accepted line (stdio) or single message (HTTP) from a server.
 const MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
+/// Most bytes accepted from one server over the whole exchange, noise included.
+const MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
+/// Largest serialized `inputSchema` or `outputSchema` accepted for one tool.
+const MAX_SCHEMA_BYTES: usize = 1024 * 1024;
 /// Most items accepted from one `*/list` call sequence.
 const MAX_ITEMS: usize = 10_000;
 /// Most pages followed for one `*/list` call sequence.
@@ -46,6 +50,47 @@ impl fmt::Display for RpcError {
             RpcError::Server(m) | RpcError::Other(m) => f.write_str(m),
         }
     }
+}
+
+/// Running total of the bytes received from one server.
+struct Budget {
+    left: usize,
+}
+
+impl Budget {
+    fn new() -> Self {
+        Budget {
+            left: MAX_TOTAL_BYTES,
+        }
+    }
+
+    /// Account for `n` received bytes.
+    fn spend(&mut self, n: usize) -> Result<(), RpcError> {
+        self.left = self.left.checked_sub(n).ok_or_else(|| {
+            RpcError::Other(format!(
+                "server sent more than {} MiB in total",
+                MAX_TOTAL_BYTES / (1024 * 1024)
+            ))
+        })?;
+        Ok(())
+    }
+}
+
+/// Fail if a tool in a `tools/list` page carries an oversize schema.
+fn check_tool_schemas(tools: &[Value]) -> Result<(), RpcError> {
+    for tool in tools {
+        for key in ["inputSchema", "outputSchema"] {
+            let size = tool.get(key).map_or(0, |schema| schema.to_string().len());
+            if size > MAX_SCHEMA_BYTES {
+                let name = tool.get("name").and_then(Value::as_str).unwrap_or("?");
+                return Err(RpcError::Other(format!(
+                    "tool `{}`: {key} is larger than {MAX_SCHEMA_BYTES} bytes",
+                    snippet(name, 80)
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// One JSON-RPC connection to a server.
@@ -169,6 +214,9 @@ fn list<T: DeserializeOwned>(
             .get(key)
             .filter(|v| v.is_array())
             .ok_or_else(|| RpcError::Other(format!("{method}: result has no `{key}` array")))?;
+        if method == "tools/list" {
+            check_tool_schemas(items.as_array().map_or(&[], Vec::as_slice))?;
+        }
         let page = Vec::<T>::deserialize(items)
             .map_err(|e| RpcError::Other(format!("{method}: invalid `{key}`: {e}")))?;
         if out.len() + page.len() > MAX_ITEMS {
@@ -207,4 +255,32 @@ pub fn introspect(cfg: &ServerConfig, timeout: Duration) -> Result<ServerSurface
         Transport::Http { url, headers } => http::run(&cfg.name, url, headers, timeout),
     };
     result.map_err(|e| format!("{}: {e}", cfg.name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn budget_runs_out() {
+        let mut budget = Budget::new();
+        budget.spend(MAX_TOTAL_BYTES).unwrap();
+        let err = budget.spend(1).unwrap_err().to_string();
+        assert!(err.contains("64 MiB"), "{err}");
+    }
+
+    #[test]
+    fn oversize_schema_names_the_tool() {
+        let big = "x".repeat(MAX_SCHEMA_BYTES);
+        let tools = [
+            json!({"name": "small", "inputSchema": {"type": "object"}}),
+            json!({"name": "fat", "inputSchema": {}, "outputSchema": {"description": big}}),
+        ];
+        let err = check_tool_schemas(&tools).unwrap_err().to_string();
+        assert!(
+            err.contains("`fat`") && err.contains("outputSchema"),
+            "{err}"
+        );
+        assert!(check_tool_schemas(&tools[..1]).is_ok());
+    }
 }

@@ -4,15 +4,51 @@ use std::collections::BTreeMap;
 use std::io::{self, BufRead, Read};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
+
+use regex::Regex;
 
 use super::fetch_surface;
 use super::session::Session;
 use crate::model::ServerSurface;
 use crate::text::snippet;
 
+/// Variables a launcher (`npx`, `uvx`, `python`, ...) needs; everything else is withheld from the
+/// server so CI secrets and the runner's control files (`GITHUB_ENV`, ...) do not reach it.
+const INHERITED_ENV: &[&str] = &[
+    "PATH",
+    "PATHEXT",
+    "HOME",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "ProgramData",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TERM",
+    "USER",
+    "USERNAME",
+    "LOGNAME",
+    "SHELL",
+    "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_DATA_HOME",
+    "XDG_RUNTIME_DIR",
+];
+/// Never inherited, whatever the allowlist says.
+const WITHHELD_PREFIXES: &[&str] = &["GITHUB_", "ACTIONS_", "RUNNER_"];
 /// How much of the server's stderr is kept for error messages.
 const STDERR_TAIL_BYTES: usize = 4096;
 /// How long to wait for the stderr reader to drain after the child is gone.
@@ -63,16 +99,25 @@ fn spawn(
     env: &BTreeMap<String, String>,
     cwd: Option<&str>,
 ) -> Result<Spawned, String> {
+    let child_env = child_env(
+        std::env::vars_os()
+            .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?))),
+        env,
+    );
     let start = |program: &str| {
         let mut cmd = Command::new(program);
         cmd.args(args)
-            .envs(env)
+            .env_clear()
+            .envs(&child_env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if let Some(dir) = cwd {
             cmd.current_dir(dir);
         }
+        // Own process group, so the whole tree (`npx` -> node) can be killed at once.
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
         cmd.spawn()
     };
     match start(command) {
@@ -100,8 +145,44 @@ fn spawn(
     }
 }
 
+/// The environment of the server process: the allowlisted part of `inherited`, then the config's
+/// own `env` (the user's explicit choice, so it may override or add anything).
+fn child_env(
+    inherited: impl IntoIterator<Item = (String, String)>,
+    configured: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let allowed = |name: &str| {
+        let upper = name.to_ascii_uppercase();
+        !WITHHELD_PREFIXES.iter().any(|p| upper.starts_with(p))
+            && INHERITED_ENV.iter().any(|a| {
+                // Windows variable names are case-insensitive.
+                if cfg!(windows) {
+                    a.eq_ignore_ascii_case(name)
+                } else {
+                    *a == name
+                }
+            })
+    };
+    let mut env: BTreeMap<String, String> = inherited
+        .into_iter()
+        .filter(|(name, _)| allowed(name))
+        .collect();
+    env.extend(configured.iter().map(|(k, v)| (k.clone(), v.clone())));
+    env
+}
+
 /// Kill and reap the child (and, behind a `.cmd` wrapper on Windows, its process tree).
 fn terminate(spawned: &mut Spawned) {
+    #[cfg(unix)]
+    {
+        // The child leads its own process group (see `spawn`); std has no `killpg`.
+        let _ = Command::new("kill")
+            .args(["-KILL", "--", &format!("-{}", spawned.child.id())])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     if spawned.wrapper && cfg!(windows) {
         let _ = Command::new("taskkill")
             .args(["/PID", &spawned.child.id().to_string(), "/T", "/F"])
@@ -112,6 +193,33 @@ fn terminate(spawned: &mut Spawned) {
     }
     let _ = spawned.child.kill();
     let _ = spawned.child.wait();
+}
+
+/// Drop control characters (newlines and tabs become spaces) and replace long token-like runs
+/// that mix letters and digits, which is what API keys and JWTs look like, with `***`.
+fn mask_secrets(text: &str) -> String {
+    static TOKEN: OnceLock<Regex> = OnceLock::new();
+    let clean: String = text
+        .chars()
+        .filter_map(|c| match c {
+            '\n' | '\r' | '\t' => Some(' '),
+            c if c.is_control() => None,
+            c => Some(c),
+        })
+        .collect();
+    let token = TOKEN.get_or_init(|| Regex::new(r"[A-Za-z0-9_\-+/=.]{20,}").expect("valid regex"));
+    token
+        .replace_all(&clean, |caps: &regex::Captures<'_>| {
+            let run = &caps[0];
+            if run.bytes().any(|b| b.is_ascii_alphabetic())
+                && run.bytes().any(|b| b.is_ascii_digit())
+            {
+                "***".to_owned()
+            } else {
+                run.to_owned()
+            }
+        })
+        .into_owned()
 }
 
 /// Last [`STDERR_TAIL_BYTES`] of the child's stderr, filled by a background thread.
@@ -149,7 +257,7 @@ impl StderrTail {
         // A grandchild may keep the pipe open; do not wait for it forever.
         let _ = self.finished.recv_timeout(STDERR_DRAIN);
         let bytes = self.buf.lock().ok()?;
-        let text = String::from_utf8_lossy(&bytes);
+        let text = mask_secrets(&String::from_utf8_lossy(&bytes));
         let text = snippet(text.trim(), 600);
         (!text.is_empty()).then_some(text)
     }
@@ -236,5 +344,57 @@ impl BufRead for ChannelReader {
 
     fn consume(&mut self, amount: usize) {
         self.pos = (self.pos + amount).min(self.chunk.len());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pairs(items: &[(&str, &str)]) -> Vec<(String, String)> {
+        items
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn child_env_is_an_allowlist_plus_the_config() {
+        let inherited = pairs(&[
+            ("PATH", "/usr/bin"),
+            ("HOME", "/home/ci"),
+            ("GITHUB_ENV", "/runner/env"),
+            ("GITHUB_PATH", "/runner/path"),
+            ("GITHUB_OUTPUT", "/runner/out"),
+            ("GITHUB_TOKEN", "ghs_secret"),
+            ("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "jwt"),
+            ("RUNNER_TEMP", "/tmp"),
+            ("AWS_SECRET_ACCESS_KEY", "secret"),
+            ("NPM_TOKEN", "secret"),
+        ]);
+        let configured = BTreeMap::from([
+            ("PATH".to_owned(), "/custom".to_owned()),
+            ("GITHUB_TOKEN".to_owned(), "explicit".to_owned()),
+            ("API_KEY".to_owned(), "k".to_owned()),
+        ]);
+        let env = child_env(inherited, &configured);
+        let expected = BTreeMap::from([
+            ("PATH".to_owned(), "/custom".to_owned()),
+            ("HOME".to_owned(), "/home/ci".to_owned()),
+            ("GITHUB_TOKEN".to_owned(), "explicit".to_owned()),
+            ("API_KEY".to_owned(), "k".to_owned()),
+        ]);
+        assert_eq!(env, expected);
+    }
+
+    #[test]
+    fn mask_secrets_hides_token_like_runs_and_control_characters() {
+        let text = "boot ok\nkey=sk-ant-api03-AbCdEf0123456789xyz and /usr/local/lib/node_modules/pkg \
+                    \u{1b}[31mred\u{0}\u{1b}[0m aaaaaaaaaaaaaaaaaaaaaaaa 0123456789012345678901";
+        assert_eq!(
+            mask_secrets(text),
+            "boot ok *** and /usr/local/lib/node_modules/pkg [31mred[0m \
+             aaaaaaaaaaaaaaaaaaaaaaaa 0123456789012345678901"
+        );
     }
 }

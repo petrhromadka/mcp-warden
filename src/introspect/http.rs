@@ -4,18 +4,20 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io::{self, BufRead, BufReader, Read};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+use regex::Regex;
 use serde_json::{Value, json};
 use ureq::Agent;
 
 use super::session::read_bounded_line;
-use super::{MAX_MESSAGE_BYTES, Message, PROTOCOL_VERSION, Rpc, RpcError, classify, fetch_surface};
+use super::{
+    Budget, MAX_MESSAGE_BYTES, Message, PROTOCOL_VERSION, Rpc, RpcError, classify, fetch_surface,
+};
 use crate::model::ServerSurface;
 use crate::text::snippet;
 
-/// Most bytes read from one SSE response.
-const MAX_STREAM_BYTES: u64 = 64 * 1024 * 1024;
 /// Headers this client sets itself; the config cannot override them.
 const RESERVED_HEADERS: [&str; 4] = [
     "accept",
@@ -30,11 +32,17 @@ pub(super) fn run(
     headers: &BTreeMap<String, String>,
     timeout: Duration,
 ) -> Result<ServerSurface, String> {
-    // Redirects are not followed: configured headers (API keys) must not reach another host.
+    // Not echoed: the parser's message quotes the offending part of the URL.
+    if url.parse::<ureq::http::Uri>().is_err() {
+        return Err("invalid server URL".to_owned());
+    }
+    // Redirects are not followed and the proxy variables are ignored: configured headers (API
+    // keys) must not reach another host.
     let config = Agent::config_builder()
         .http_status_as_error(false)
         .max_redirects(0)
         .max_redirects_will_error(false)
+        .proxy(None)
         .build();
     let mut rpc = HttpRpc {
         agent: Agent::new_with_config(config),
@@ -45,8 +53,31 @@ pub(super) fn run(
         next_id: 1,
         deadline: Instant::now() + timeout,
         timeout,
+        budget: Budget::new(),
     };
     fetch_surface(&mut rpc, name).map_err(|e| e.to_string())
+}
+
+/// `url` without userinfo, query and fragment, which may carry credentials.
+fn redact_url(url: &str) -> String {
+    let url = &url[..url.find(['?', '#']).unwrap_or(url.len())];
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_owned();
+    };
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    format!("{scheme}://{host}{path}")
+}
+
+/// Redact every URL in an error message produced by the HTTP stack.
+fn redact_urls(message: &str, configured_url: &str) -> String {
+    static URL: OnceLock<Regex> = OnceLock::new();
+    let url = URL.get_or_init(|| {
+        Regex::new(r#"[A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>)]+"#).expect("valid regex")
+    });
+    let message = message.replace(configured_url, &redact_url(configured_url));
+    url.replace_all(&message, |caps: &regex::Captures<'_>| redact_url(&caps[0]))
+        .into_owned()
 }
 
 struct HttpRpc<'a> {
@@ -58,12 +89,26 @@ struct HttpRpc<'a> {
     next_id: u64,
     deadline: Instant,
     timeout: Duration,
+    budget: Budget,
 }
 
 impl HttpRpc<'_> {
     /// POST `body`. For a request (`wait_for` is its id) return its `result`; for a notification
-    /// return `Null` once the server accepted it.
+    /// return `Null` once the server accepted it. Errors never contain the URL's credentials.
     fn post(
+        &mut self,
+        method: &str,
+        body: &Value,
+        wait_for: Option<u64>,
+    ) -> Result<Value, RpcError> {
+        self.post_unredacted(method, body, wait_for)
+            .map_err(|e| match e {
+                RpcError::Other(m) => RpcError::Other(redact_urls(&m, self.url)),
+                server @ RpcError::Server(_) => server,
+            })
+    }
+
+    fn post_unredacted(
         &mut self,
         method: &str,
         body: &Value,
@@ -112,7 +157,7 @@ impl HttpRpc<'_> {
         }
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
-            return Err(RpcError::Other(status_error(method, status, &mut response)));
+            return Err(RpcError::Other(status_error(method, &response)));
         }
         let Some(id) = wait_for else {
             return Ok(Value::Null);
@@ -123,9 +168,13 @@ impl HttpRpc<'_> {
             .and_then(|v| v.to_str().ok())
             .is_some_and(|v| v.to_ascii_lowercase().contains("text/event-stream"));
         let outcome = if is_stream {
-            let reader = BufReader::new(response.body_mut().as_reader().take(MAX_STREAM_BYTES));
-            read_sse_response(reader, id)
-                .map_err(|e| RpcError::Other(format!("cannot read event stream: {e}")))?
+            // One byte more than the budget allows, so running out shows as an overspend.
+            let cap = u64::try_from(self.budget.left).unwrap_or(u64::MAX) + 1;
+            let mut limited = response.body_mut().as_reader().take(cap);
+            let read = read_sse_response(BufReader::new(&mut limited), id);
+            let used = usize::try_from(cap - limited.limit()).unwrap_or(usize::MAX);
+            self.budget.spend(used)?;
+            read.map_err(|e| RpcError::Other(format!("cannot read event stream: {e}")))?
         } else {
             let mut bytes = Vec::new();
             response
@@ -139,6 +188,7 @@ impl HttpRpc<'_> {
                     "response larger than {MAX_MESSAGE_BYTES} bytes"
                 )));
             }
+            self.budget.spend(bytes.len())?;
             let value: Value = serde_json::from_slice(&bytes)
                 .map_err(|e| RpcError::Other(format!("invalid JSON response: {e}")))?;
             find_response(&value, id)
@@ -169,20 +219,14 @@ impl Rpc for HttpRpc<'_> {
     }
 }
 
-fn status_error(
-    method: &str,
-    status: u16,
-    response: &mut ureq::http::Response<ureq::Body>,
-) -> String {
-    let mut text = Vec::new();
-    // Best effort: the status already tells the story.
-    let _ = response
-        .body_mut()
-        .as_reader()
-        .take(1024)
-        .read_to_end(&mut text);
-    let detail = snippet(&String::from_utf8_lossy(&text), 200);
-    let mut message = format!("HTTP {status} for {method}");
+/// Status line only: a response body may echo request headers or other secrets.
+fn status_error(method: &str, response: &ureq::http::Response<ureq::Body>) -> String {
+    let status = response.status().as_u16();
+    let mut message = format!("HTTP {status}");
+    if let Some(reason) = response.status().canonical_reason() {
+        let _ = write!(message, " {reason}");
+    }
+    let _ = write!(message, " for {method}");
     if (300..400).contains(&status) {
         let location = response
             .headers()
@@ -192,11 +236,8 @@ fn status_error(
         let _ = write!(
             message,
             " (redirect to {} not followed)",
-            snippet(location, 200)
+            snippet(&redact_url(location), 200)
         );
-    }
-    if !detail.is_empty() {
-        let _ = write!(message, ": {detail}");
     }
     if method == "initialize" && matches!(status, 400 | 404 | 405) {
         message.push_str(
@@ -359,5 +400,63 @@ mod tests {
             assert!(headers.contains(&"mcp-protocol-version: 2025-06-18".to_owned()));
         }
         assert!(log[1].1.contains("notifications/initialized"));
+    }
+
+    #[test]
+    fn error_status_hides_the_body_and_the_url_credentials() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://user:hunter2@{addr}/mcp?token=abc123#frag");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_request(&stream);
+            let body = "echoed Authorization: Bearer SECRETBODY";
+            write!(
+                stream,
+                "HTTP/1.1 500 Internal Server Error\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let err = run("srv", &url, &BTreeMap::new(), Duration::from_secs(20)).unwrap_err();
+        server.join().unwrap();
+        assert!(err.contains("HTTP 500 Internal Server Error"), "{err}");
+        for secret in ["SECRETBODY", "hunter2", "abc123", "frag"] {
+            assert!(!err.contains(secret), "{err}");
+        }
+    }
+
+    #[test]
+    fn connection_errors_and_bad_urls_do_not_leak_the_url() {
+        // Nothing listens on port 1.
+        let url = "http://user:hunter2@127.0.0.1:1/mcp?token=abc123";
+        let err = run("srv", url, &BTreeMap::new(), Duration::from_secs(20)).unwrap_err();
+        for secret in ["hunter2", "abc123"] {
+            assert!(!err.contains(secret), "{err}");
+        }
+        let err = run(
+            "srv",
+            "http://bad host/?token=abc123",
+            &BTreeMap::new(),
+            Duration::from_secs(5),
+        )
+        .unwrap_err();
+        assert!(!err.contains("abc123"), "{err}");
+    }
+
+    #[test]
+    fn redaction_drops_userinfo_query_and_fragment() {
+        assert_eq!(
+            redact_url("https://u:p@host:8443/a/b?k=v#f"),
+            "https://host:8443/a/b"
+        );
+        assert_eq!(redact_url("/relative?x=1"), "/relative");
+        assert_eq!(
+            redact_urls(
+                "error sending request for url (http://u:p@h/x?k=v): refused",
+                "http://u:p@h/x?k=v"
+            ),
+            "error sending request for url (http://h/x): refused"
+        );
     }
 }
