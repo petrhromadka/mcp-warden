@@ -7,18 +7,29 @@ branding:
 
 inputs:
   version:
-    description: Release tag to install (for example v0.1.0), or "latest".
+    description: Release tag to install (v1.2.3, with or without the leading "v"), or "latest".
     default: latest
+  verify-attestation:
+    description: >-
+      Verify the downloaded archive's build provenance attestation with "gh attestation verify",
+      in addition to the SHA256SUMS check.
+    default: "true"
   args:
-    description: Arguments passed to mcp-warden (whitespace separated).
+    description: >-
+      Arguments passed to mcp-warden (whitespace separated). The action never adds "--connect".
+      Do not add "--connect" on untrusted pull requests: it starts the configured MCP server
+      commands, which is remote code execution for anyone who can edit those configs.
     default: scan --no-discover
   paths:
-    description: Config files or directories to scan (whitespace separated).
+    description: >-
+      Config files or directories to scan, separated by whitespace or newlines (a multi-line
+      block scalar works). Directories are treated as project roots.
     default: ""
   sarif:
     description: >-
       Write SARIF to mcp-warden.sarif and upload it to code scanning. The calling job needs
-      "security-events: write".
+      "permissions: security-events: write". The upload fails on pull requests from forks (their
+      token is read-only), so set this to false there.
     default: "true"
   fail-on:
     description: Lowest severity that fails the step (none, info, low, medium, high, critical).
@@ -37,6 +48,8 @@ runs:
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
+        VERIFY_ATTESTATION: ${{ inputs.verify-attestation }}
+        GH_TOKEN: ${{ github.token }}
         REPOSITORY: petrhromadka/mcp-warden
       run: |
         set -euo pipefail
@@ -52,14 +65,14 @@ runs:
         esac
 
         base="https://github.com/${REPOSITORY}/releases"
+        if [[ ! $VERSION =~ ^(latest|v?[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+          echo "::error::invalid version (expected latest or vMAJOR.MINOR.PATCH)"
+          exit 1
+        fi
         if [ "$VERSION" = "latest" ]; then
           base="${base}/latest/download"
         else
           case "$VERSION" in v*) ;; *) VERSION="v${VERSION}" ;; esac
-          if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
-            echo "::error::invalid version '${VERSION}'"
-            exit 1
-          fi
           base="${base}/download/${VERSION}"
         fi
 
@@ -68,10 +81,10 @@ runs:
         rm -rf "$work"
         mkdir -p "$work/bin"
 
-        curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
-          --output "$work/$archive" "${base}/${archive}"
-        curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 \
-          --output "$work/SHA256SUMS" "${base}/SHA256SUMS"
+        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error \
+          --location --retry 3 --output "$work/$archive" "${base}/${archive}"
+        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error \
+          --location --retry 3 --output "$work/SHA256SUMS" "${base}/SHA256SUMS"
 
         expected="$(awk -v f="$archive" '$2 == f { print $1 }' "$work/SHA256SUMS")"
         if [ -z "$expected" ]; then
@@ -86,6 +99,12 @@ runs:
         if [ "$expected" != "$actual" ]; then
           echo "::error::checksum mismatch for ${archive}: expected ${expected}, got ${actual}"
           exit 1
+        fi
+
+        # The checksum comes from the same origin as the archive; the attestation is signed
+        # separately and ties the archive to this repository's release workflow.
+        if [ "$VERIFY_ATTESTATION" != "false" ]; then
+          gh attestation verify "$work/$archive" --repo "$REPOSITORY"
         fi
 
         if [ "$ext" = "zip" ]; then
@@ -113,8 +132,9 @@ runs:
         set -o pipefail
         set -f # no pathname expansion while splitting the inputs below
 
-        read -r -a arg_list <<< "$ARGS"
-        read -r -a path_list <<< "$SCAN_PATHS"
+        # Split on all whitespace, newlines included.
+        read -r -d '' -a arg_list <<< "$ARGS" || true
+        read -r -d '' -a path_list <<< "$SCAN_PATHS" || true
 
         cmd=("$BIN" "${arg_list[@]}" --fail-on "$FAIL_ON")
         sarif_file=""
@@ -126,10 +146,11 @@ runs:
           cmd+=(-- "${path_list[@]}")
         fi
 
-        "${cmd[@]}"
-        code=$?
+        # GitHub runs bash with -e: capture the exit code without aborting the step, so the
+        # outputs below are always written and the SARIF report is uploaded before the job fails.
+        code=0
+        "${cmd[@]}" || code=$?
 
-        # Exit 1 means findings reached --fail-on; the SARIF report is still uploaded first.
         if [ -n "$sarif_file" ] && [ ! -f "$sarif_file" ]; then
           sarif_file=""
         fi
