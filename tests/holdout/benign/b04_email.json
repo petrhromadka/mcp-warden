@@ -1,0 +1,39 @@
+{
+  "server": "mailer",
+  "tools": [
+    {
+      "name": "send_email",
+      "description": "Sends an email. The message is sent exactly as given to the recipients in `to`, `cc` and `bcc`; ask the user to confirm the recipient list when it is ambiguous.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "Recipient addresses, comma separated"
+          },
+          "cc": {
+            "type": "string",
+            "description": "CC addresses"
+          },
+          "bcc": {
+            "type": "string",
+            "description": "BCC addresses"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Subject"
+          },
+          "body": {
+            "type": "string",
+            "description": "Plain-text body"
+          }
+        }
+      },
+      "annotations": {
+        "destructiveHint": false
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

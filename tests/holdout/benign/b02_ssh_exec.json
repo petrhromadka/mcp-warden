@@ -1,0 +1,27 @@
+{
+  "server": "ssh-ops",
+  "tools": [
+    {
+      "name": "ssh_exec",
+      "description": "Runs a command on a remote host over SSH. Hosts and identity files are resolved from ~/.ssh/config; the private key (for example ~/.ssh/id_ed25519) is never read by this tool's caller, ssh-agent is used.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "Host alias from ssh config"
+          },
+          "command": {
+            "type": "string",
+            "description": "Command to run"
+          }
+        }
+      },
+      "annotations": {
+        "destructiveHint": true
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

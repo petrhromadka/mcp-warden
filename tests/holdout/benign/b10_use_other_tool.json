@@ -1,0 +1,24 @@
+{
+  "server": "db-tools",
+  "instructions": "Prefer run_query for questions about data. Always confirm with the user before calling run_migration. Results are limited to 500 rows.",
+  "tools": [
+    {
+      "name": "run_query",
+      "description": "Runs a read-only SQL SELECT. Do not use this tool for schema changes; use `run_migration` instead. Do not use it to dump whole tables; use `export_table` instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "SELECT statement"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

@@ -1,0 +1,24 @@
+{
+  "server": "cloud-store",
+  "tools": [
+    {
+      "name": "upload_file",
+      "description": "Uploads a local file to an S3 bucket, e.g. s3://my-bucket/reports/2026.csv. Credentials come from the standard AWS chain (~/.aws/credentials, environment, or role); never pass keys as parameters. Returns the object URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "local_path": {
+            "type": "string",
+            "description": "Local path"
+          },
+          "s3_uri": {
+            "type": "string",
+            "description": "Destination s3:// URI"
+          }
+        }
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}
