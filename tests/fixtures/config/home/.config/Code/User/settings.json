@@ -1,0 +1,9 @@
+{
+  // legacy location
+  "editor.fontSize": 14,
+  "mcp": {
+    "servers": {
+      "legacy": { "command": "python", "args": ["-m", "srv"] },
+    },
+  },
+}

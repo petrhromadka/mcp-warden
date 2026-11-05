@@ -1,0 +1,12 @@
+// Zed settings (JSONC)
+{
+  "theme": "One Dark",
+  "context_servers": {
+    /* object form */
+    "obj": {
+      "command": { "path": "/usr/bin/srv", "args": ["--stdio"], "env": { "K": "v" } },
+    },
+    "plain": { "command": "srv", "args": ["--x"], },
+    "remote": { "url": "https://zed.example.com/mcp", "headers": { "X": "y" } },
+  },
+}
