@@ -99,6 +99,8 @@ static TAGS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         r"(?m)^[ \t]*#{2,6}[ \t]*system(?:[ \t]+(?:prompt|message|instructions?))?[ \t]*:?[ \t]*$",
         r"(?m)^[ \t]*(?:assistant|human|system)[ \t]*:",
         r"\n[ \t]*user[ \t]*:",
+        // Chat-template messages smuggled as JSON: {"role": "system", "content": "..."}.
+        r#""role"\s*:\s*"(?:system|developer|assistant)""#,
     ])
 });
 
@@ -106,7 +108,8 @@ static TAGS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 // over the config file"), so it only counts with a tool/instruction subject or object.
 static OVERRIDES: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     compile(&[
-        r"\b(?:ignore|disregard|forget|override)\s+(?:(?:all|any|every|the|your|of|these|those)\s+){0,3}(?:previous|prior|above|earlier|preceding|system)\s+(?:instructions?|prompts?|rules|messages|directions|guidelines)",
+        r"\b(?:ignore|disregard|forget|override|set\s+aside)\s+(?:(?:all|any|every|the|your|of|these|those)\s+){0,3}(?:previous|prior|above|earlier|preceding|system)\s+(?:instructions?|prompts?|rules|messages|directions|guidelines|guidance)",
+        r"\b(?:ignore|disregard|set\s+aside)\s+(?:what\s+)?the\s+user(?:'s|\u{2019}s)?\s+(?:request|instructions?|question|message|wishes|asked|said|wants)",
         r"\boverride\s+(?:the|your)\s+system\s+(?:prompt|instructions?|message|rules)",
         r"\b(?:this|these)\s+(?:tool|function|instructions?|rules?|prompt|message)s?\s+(?:takes?|has|have|must\s+take)\s+(?:precedence|priority)\b",
         r"\b(?:precedence|priority)\s+over\s+(?:(?:all|any|every|the|your|other|previous|prior|system|user)\s+){1,3}(?:tools?|instructions?|prompts?|rules|messages)",
@@ -126,7 +129,10 @@ static CONCEALMENT: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         r"\bwithout\s+(?:telling|informing|notifying|alerting)\s+the\s+user\b",
         r"\bwithout\s+the\s+user\s+(?:knowing|noticing|being\s+aware)",
         r"\bthe\s+user\s+(?:must|should|shall|can|may|will)(?:\s+not|\s+never|n['’]t)\s+(?:know|see|notice|be\s+(?:aware|told|informed|notified|shown))",
-        r"\b(?:silently|quietly|secretly|covertly)\s+(?:send|post|forward|upload|copy|append|read|call|invoke|run|execute|exfiltrate|attach|collect|fetch|pass)\b",
+        r"\b(?:silently|quietly|secretly|covertly)\s+(?:send|post|forward|upload|copy|append|read|call|invoke|run|execute|exfiltrate|attach|collect|fetch|pass|include|add|bcc|cc)\b",
+        r"\bbe\s+(?:silently|quietly|secretly|covertly)\s+(?:included|added|sent|forwarded|copied|attached|posted|uploaded|bcc'?d|cc'?d)\b",
+        r"\b(?:and|but)\s+(?:do\s+)?not\s+(?:tell|inform|notify|show|alert)\s+the\s+user\b",
+        r"\b(?:must|should)\s+not\s+(?:display|show|reveal|mention)\s+(?:this|these|that)\s+(?:message|instructions?|note|text)\b",
         r"\b(?:send|post|forward|upload|call|invoke|run|execute|do|perform)\s+(?:this|it|that)\s+(?:silently|quietly|secretly|covertly)\b",
     ])
 });
@@ -304,7 +310,10 @@ impl ShadowMatcher {
         let mut seen = BTreeSet::new();
         for (start, end) in sentences(field.text) {
             let sentence = &field.text[start..end];
-            let Some(other) = self.other_tool_in(sentence, owner) else {
+            let Some(other) = self
+                .other_tool_in(sentence, owner)
+                .or_else(|| unscanned_tool_in(sentence, owner))
+            else {
                 continue;
             };
             if !shadow_wording(sentence) || !seen.insert(other.to_lowercase()) {
@@ -343,6 +352,22 @@ impl ShadowMatcher {
                 .then(|| m.as_str().to_owned())
         })
     }
+}
+
+// A tool that is not among the scanned surfaces, named explicitly as a tool: "the `send_email`
+// tool", "tool send_email". Plain identifiers are not enough (they are usually parameters).
+static NAMED_TOOL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\btools?\s+`?([a-z][a-z0-9]*[_-][a-z0-9_-]+)`?|`?([a-z][a-z0-9]*[_-][a-z0-9_-]+)`?\s+(?:tool|function)\b",
+    )
+    .expect("valid regex")
+});
+
+fn unscanned_tool_in(sentence: &str, owner: &str) -> Option<String> {
+    NAMED_TOOL.captures_iter(sentence).find_map(|c| {
+        let name = c.get(1).or_else(|| c.get(2))?.as_str();
+        (!name.eq_ignore_ascii_case(owner)).then(|| name.to_owned())
+    })
 }
 
 fn shadow_wording(sentence: &str) -> bool {

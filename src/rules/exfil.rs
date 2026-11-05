@@ -123,6 +123,8 @@ static SENSITIVE_PATH: LazyLock<Regex> = LazyLock::new(|| {
         r"|\.kube/config|\.docker/config\.json",
         r"|\bmcp\.json\b|\bclaude_desktop_config\.json\b|\.claude\.json\b",
         r"|/etc/passwd\b|/etc/shadow\b",
+        r"|\.config/gh/hosts\.yml|\.pgpass\b|\.vault-token\b|application_default_credentials\.json",
+        r"|\.gnupg\b|\.(?:bash|zsh)_history\b",
         r"|\bkeychain\b|\bwallet\.dat\b",
         r"|(?-i:Login Data)|/Cookies\b",
         r"|\b(?:chrome|firefox|brave|edge|safari)\s+(?:profile\s+)?(?:cookies|saved\s+passwords|password\s+store)\b",
@@ -133,12 +135,29 @@ static SENSITIVE_PATH: LazyLock<Regex> = LazyLock::new(|| {
 /// `.env` as a file (also `.env.local`), but not template files such as `.env.example`.
 static DOT_ENV: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)(?:^|[^\w.])\.env(?:\.([a-z]+))?\b"));
 
+/// Asking the model to move data. Data-movement verbs count in any form; reading verbs only in
+/// the imperative base form (`read ~/.ssh/id_rsa`), since `reads credentials from ~/.aws` is a
+/// tool documenting its own behaviour.
 static FILE_VERB: LazyLock<Regex> = LazyLock::new(|| {
     re(concat!(
-        r"(?i)\b(?:read|collect|include|send|pass|attach|upload|append|copy|forward|submit|",
-        r"exfiltrate|cat|share|provide|supply|dump|post|extract|grab)(?:s|ing)?\b"
+        r"(?i)\b(?:(?:collect|include|send|pass|attach|upload|append|copy|forward|submit|",
+        r"exfiltrate|share|provide|supply|dump|post|put|insert|embed)(?:s|es|ed|ing)?|",
+        r"read|cat|extract|grab|open)\b"
     ))
 });
+
+/// Some data-movement verb in `sentence` that is not negated ("never pass keys").
+fn moves_data(sentence: &str) -> bool {
+    FILE_VERB
+        .find_iter(sentence)
+        .any(|m| !negated_before(sentence, m.start()))
+}
+
+fn negated_before(sentence: &str, at: usize) -> bool {
+    let before = &sentence[..at];
+    let tail_start = before.char_indices().rev().nth(24).map_or(0, |(i, _)| i);
+    NEGATION_BEFORE.is_match(&before[tail_start..])
+}
 
 /// Byte range of the first sensitive path reference inside one sentence.
 fn sensitive_path_hit(sentence: &str) -> Option<(usize, usize)> {
@@ -165,10 +184,11 @@ fn check_sensitive_path(surface: &ServerSurface, field: &TextField<'_>, out: &mu
         let Some((s, e)) = sensitive_path_hit(sentence) else {
             continue;
         };
-        let severity = if FILE_VERB.is_match(sentence) {
+        // A bare mention is low: devops and secret-scanning tools document these paths.
+        let severity = if moves_data(sentence) {
             Severity::High
         } else {
-            Severity::Medium
+            Severity::Low
         };
         if best.is_none_or(|(b, _, _)| severity > b) {
             best = Some((severity, offset + s, offset + e));
@@ -208,7 +228,10 @@ static ENDPOINT: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static SEND_VERB: LazyLock<Regex> = LazyLock::new(|| {
-    re(r"(?i)\b(?:send|post|upload|forward|submit|report|transmit|curl|wget|call|exfiltrate)\b")
+    re(concat!(
+        r"(?i)\b(?:send|post|upload|forward|submit|report|transmit|curl|wget|call|exfiltrate)\b",
+        r"|\b(?:posted|sent|uploaded|forwarded|submitted|transmitted|beaconed)\s+to\b",
+    ))
 });
 
 /// "Report bugs at <url>" is documentation, not a data destination.
@@ -276,14 +299,14 @@ fn check_endpoint(surface: &ServerSurface, field: &TextField<'_>, out: &mut Vec<
 const V_DATA: &str = "include|append|attach|pass|put|insert|send|paste|copy|forward|provide|supply|embed|submit|upload|dump|share|add|fill\\s+in";
 const V_LIST: &str = "include|append|attach|pass|put|insert|send|paste|copy|forward|provide|supply|embed|submit|upload|dump|share|add|list|enumerate|reveal|repeat|echo|disclose";
 
-const O_CONVERSATION: &str = r"(?:(?:full|entire|complete|whole)\s+(?:conversation|chat)\b|(?:conversation|chat|message)\s+(?:history|log|transcript)\b|(?:previous|prior|earlier|past|preceding)\s+(?:user\s+)?(?:messages?|conversations?|turns?|chat)\b)";
+const O_CONVERSATION: &str = r"(?:(?:full|entire|complete|whole)\s+(?:conversation|chat)\b|(?:conversation|chat|message)\s+(?:history|log|transcript)\b|(?:previous|prior|earlier|past|preceding)\s+(?:user\s+)?(?:messages?|conversations?|turns?|chat)\b|(?:the\s+)?user(?:'s|\u{2019}s)\s+(?:latest|last|previous|recent|earlier)\s+(?:messages?|prompts?|questions?)\b)";
 const O_SYSTEM_PROMPT: &str = r"(?:your|the\s+(?:assistant'?s|model'?s|current|full|entire|complete|hidden|original))\s+(?:system|initial|original|hidden)\s+(?:prompt|instructions|message)\b";
 const O_TOOLS: &str = r"(?:(?:every|all|each|any|other|available)\s+(?:\w+\s+){0,2}tools?(?:'s|\u{2019}s|s')?\s+(?:descriptions?|outputs?|results?|schemas?|parameters)\b|(?:every|all|each|available)\s+(?:\w+\s+){0,2}tools?\s+and\s+(?:its|their)\s+(?:descriptions?|parameters|schemas?)\b|descriptions?\s+of\s+(?:every|all|each|other|the\s+other|available)\s+(?:\w+\s+){0,2}tools?\b|(?:previous|prior|earlier|other)\s+tool\s+(?:calls?|outputs?|results?)\b|(?:output|result)s?\s+of\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|other|earlier)\s+(?:tool\s+)?(?:calls?|tools?)\b)";
 const SECRET_NOUN: &str = r"(?:api[\s_-]*keys?|access\s+tokens?|auth\w*\s+tokens?|tokens?|passwords?|credentials?|secrets?|private\s+keys?)";
 
 static HARVEST: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     let secret = format!(
-        r"(?:(?:all|every|each)\s+(?:the\s+)?(?:\w+\s+)?{SECRET_NOUN}\b|the\s+user'?s\s+(?:\w+\s+)?{SECRET_NOUN}\b|{SECRET_NOUN}\b[^.!?\n]{{0,40}}\byou\s+(?:have|has|know|knows|saw|see|can\s+(?:see|find|access)))"
+        r"(?:(?:all|any|every|each)\s+(?:the\s+)?(?:\w+\s+)?{SECRET_NOUN}\b|the\s+user'?s\s+(?:\w+\s+)?{SECRET_NOUN}\b|{SECRET_NOUN}\b[^.!?\n]{{0,40}}\byou\s+(?:have|has|know|knows|saw|see|can\s+(?:see|find|access)))"
     );
     let env = r"(?:(?:all|every|your|the\s+(?:current|full|entire))\s+(?:the\s+)?(?:\w+\s+)?environment\s+variables|\bprocess\.env\b|\bos\.environ\b)";
     let files = r"(?:contents?\s+of\s+(?:(?:any|all|every|each)\s+(?:\w+\s+){0,2}(?:files?|documents?|notes?|emails?)\b|(?:the\s+)?(?:user'?s|your)\s+(?:\w+\s+)?(?:files?|home|directory)\b|(?:~|/etc|/home|/root|\.\.?/)\S*|(?:the\s+)?(?:files?\s+)?you\s+(?:have\s+)?(?:read|opened|accessed|seen)\b))";
@@ -542,6 +565,21 @@ static DESTRUCTIVE_DESC: LazyLock<Regex> = LazyLock::new(|| {
     ))
 });
 
+/// "... and overwrites the index file": what the tool does, anywhere in a sentence.
+static DESTRUCTIVE_ANYWHERE: LazyLock<Regex> = LazyLock::new(|| {
+    re(
+        r"(?i)\b(?:deletes|removes|overwrites|truncates|wipes|destroys|purges|erases|drops)\s+(?:all\s+|the\s+|any\s+|every\s+)?\w+",
+    )
+});
+
+fn destructive_desc(sentence: &str) -> Option<regex::Match<'_>> {
+    DESTRUCTIVE_DESC.find(sentence).or_else(|| {
+        DESTRUCTIVE_ANYWHERE
+            .find_iter(sentence)
+            .find(|m| !negated_before(sentence, m.start()))
+    })
+}
+
 fn check_annotation(surface: &ServerSurface, tool: &Tool, out: &mut Vec<Finding>) {
     let read_only = tool
         .annotations
@@ -554,7 +592,7 @@ fn check_annotation(surface: &ServerSurface, tool: &Tool, out: &mut Vec<Finding>
     }
     let from_desc = tool.description.as_deref().and_then(|d| {
         sentences(d).into_iter().find_map(|(offset, s)| {
-            DESTRUCTIVE_DESC.find(s).map(|m| {
+            destructive_desc(s).map(|m| {
                 text::snippet_around(d, offset + m.start(), offset + m.end(), EVIDENCE_CHARS)
             })
         })
@@ -632,11 +670,15 @@ mod tests {
         assert_eq!(f[0].severity, Severity::High);
 
         let f = scan_desc("Credentials are kept in .aws/credentials on this machine.");
-        assert_eq!((ids(&f), f[0].severity), (vec!["MW020"], Severity::Medium));
+        assert_eq!((ids(&f), f[0].severity), (vec!["MW020"], Severity::Low));
 
         // A verb in another sentence does not raise the severity.
         let f = scan_desc("Send a greeting. The file ~/.npmrc is mentioned here.");
-        assert_eq!(f[0].severity, Severity::Medium);
+        assert_eq!(f[0].severity, Severity::Low);
+
+        // Negated movement ("never pass keys") is documentation, not a request.
+        let f = scan_desc("Credentials come from ~/.npmrc; never pass tokens as parameters.");
+        assert_eq!(f[0].severity, Severity::Low);
 
         for benign in [
             "Read the contents of a file from the filesystem. Use this to examine .env.example templates.",
