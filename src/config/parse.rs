@@ -51,7 +51,8 @@ fn read_limited(path: &Path) -> Result<String, String> {
     if buf.len() as u64 > MAX_FILE_BYTES {
         return Err("file larger than 32 MiB".into());
     }
-    String::from_utf8(buf).map_err(|_| "file is not valid UTF-8".into())
+    // Node-based clients accept invalid UTF-8 (they substitute U+FFFD), so scan it too.
+    Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
 struct Ctx<'a> {
@@ -66,18 +67,30 @@ impl Ctx<'_> {
             return;
         };
         for (name, entry) in servers {
-            if let Some((transport, disabled)) = parse_entry(entry) {
+            let (transports, disabled) = parse_entry(entry);
+            let split = transports.len() > 1;
+            for (transport, label) in transports {
+                let suffix = if split {
+                    format!("#{label}")
+                } else {
+                    String::new()
+                };
                 self.out.push(ServerConfig {
                     name: name.clone(),
                     client: self.client.to_string(),
                     source: self.source.to_path_buf(),
-                    pointer: format!("{prefix}/{name}"),
+                    pointer: format!("{prefix}/{}{suffix}", escape(name)),
                     transport,
                     disabled,
                 });
             }
         }
     }
+}
+
+/// Escape one JSON pointer reference token (RFC 6901).
+fn escape(key: &str) -> String {
+    key.replace('~', "~0").replace('/', "~1")
 }
 
 fn collect(root: &Map<String, Value>, ctx: &mut Ctx) {
@@ -87,7 +100,7 @@ fn collect(root: &Map<String, Value>, ctx: &mut Ctx) {
         for (project, v) in projects {
             ctx.section(
                 v.get("mcpServers"),
-                &format!("projects/{project}/mcpServers"),
+                &format!("projects/{}/mcpServers", escape(project)),
             );
         }
     }
@@ -132,38 +145,48 @@ fn is_remote_type(t: &str) -> bool {
     )
 }
 
-/// Returns the transport and the disabled flag, or `None` for a malformed entry.
-fn parse_entry(entry: &Value) -> Option<(Transport, bool)> {
-    let e = entry.as_object()?;
+/// Returns the transports of one entry (empty for a malformed entry) and the disabled flag.
+/// An entry that has both a command and a URL and does not say which one it is yields both,
+/// because clients disagree on which one wins.
+fn parse_entry(entry: &Value) -> (Vec<(Transport, &'static str)>, bool) {
+    let Some(e) = entry.as_object() else {
+        return (Vec::new(), false);
+    };
     let disabled = e.get("disabled").and_then(Value::as_bool) == Some(true)
         || e.get("enabled").and_then(Value::as_bool) == Some(false);
     let url = ["url", "serverUrl", "httpUrl"]
         .iter()
         .find_map(|k| e.get(*k).and_then(Value::as_str))
         .filter(|u| !u.is_empty());
-    let remote_type = ["type", "transport"]
+    let declared = ["type", "transport"]
         .iter()
-        .find_map(|k| e.get(*k).and_then(Value::as_str))
-        .is_some_and(is_remote_type);
+        .find_map(|k| e.get(*k).and_then(Value::as_str));
+    let remote_type = declared.is_some_and(is_remote_type);
+    let stdio_type = declared.is_some_and(|t| t.eq_ignore_ascii_case("stdio"));
 
-    let transport = match (parse_command(e), url) {
-        (Some((command, args, env)), u) if !(remote_type && u.is_some()) => Transport::Stdio {
-            command,
-            args,
-            env,
-            cwd: e.get("cwd").and_then(Value::as_str).map(str::to_string),
-        },
-        (_, Some(url)) => {
-            let mut headers = string_map(e.get("headers"));
-            headers.extend(string_map(e.get("http_headers")));
-            Transport::Http {
-                url: url.to_string(),
-                headers,
-            }
+    let stdio = parse_command(e).map(|(command, args, env)| Transport::Stdio {
+        command,
+        args,
+        env,
+        cwd: e.get("cwd").and_then(Value::as_str).map(str::to_string),
+    });
+    let http = url.map(|url| {
+        let mut headers = string_map(e.get("headers"));
+        headers.extend(string_map(e.get("http_headers")));
+        Transport::Http {
+            url: url.to_string(),
+            headers,
         }
-        _ => return None,
+    });
+    let transports = match (stdio, http) {
+        (Some(_), Some(h)) if remote_type => vec![(h, "http")],
+        (Some(s), Some(_)) if stdio_type => vec![(s, "stdio")],
+        (Some(s), Some(h)) => vec![(s, "stdio"), (h, "http")],
+        (Some(s), None) => vec![(s, "stdio")],
+        (None, Some(h)) => vec![(h, "http")],
+        (None, None) => Vec::new(),
     };
-    Some((transport, disabled))
+    (transports, disabled)
 }
 
 type StdioParts = (String, Vec<String>, BTreeMap<String, String>);
@@ -289,7 +312,7 @@ mod tests {
                 cwd: Some("/work".into()),
             }
         );
-        let remote = by_pointer(&s, "projects//work/app/mcpServers/docs");
+        let remote = by_pointer(&s, "projects/~1work~1app/mcpServers/docs");
         assert_eq!(
             remote.transport,
             Transport::Http {
@@ -297,7 +320,7 @@ mod tests {
                 headers: BTreeMap::from([("Authorization".into(), "Bearer dummy".into())]),
             }
         );
-        assert!(by_pointer(&s, "projects//work/app/mcpServers/off").disabled);
+        assert!(by_pointer(&s, "projects/~1work~1app/mcpServers/off").disabled);
     }
 
     #[test]
@@ -438,6 +461,50 @@ mod tests {
         assert!(parse_file(&dir.path().join("missing.json"), None).is_err());
         let arr = write(dir.path(), "arr.json", "[1,2]");
         assert_eq!(parse_file(&arr, None).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn invalid_utf8_is_decoded_lossily() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("latin1.json");
+        let mut bytes = br#"{"mcpServers": {"s": {"command": "curl", "args": ["caf"#.to_vec();
+        bytes.push(0xE9);
+        bytes.extend_from_slice(br#""]}}}"#);
+        fs::write(&p, bytes).unwrap();
+        let s = parse_file(&p, None).unwrap();
+        assert_eq!(s.len(), 1);
+        assert!(
+            matches!(&s[0].transport, Transport::Stdio { args, .. } if args[0].starts_with("caf"))
+        );
+    }
+
+    #[test]
+    fn command_and_url_without_type_yield_both_transports() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = write(
+            dir.path(),
+            "both.json",
+            r#"{"mcpServers": {
+                "both": {"command": "node", "url": "http://x.example/mcp"},
+                "typed": {"command": "node", "url": "http://x.example/mcp", "type": "stdio"},
+                "a/b~c": {"command": "node"}
+            }}"#,
+        );
+        let s = parse_file(&p, None).unwrap();
+        assert_eq!(s.len(), 4, "{s:?}");
+        assert!(matches!(
+            by_pointer(&s, "mcpServers/both#stdio").transport,
+            Transport::Stdio { .. }
+        ));
+        assert!(matches!(
+            by_pointer(&s, "mcpServers/both#http").transport,
+            Transport::Http { .. }
+        ));
+        assert!(matches!(
+            by_pointer(&s, "mcpServers/typed").transport,
+            Transport::Stdio { .. }
+        ));
+        assert_eq!(by_pointer(&s, "mcpServers/a~1b~0c").name, "a/b~c");
     }
 
     #[test]
