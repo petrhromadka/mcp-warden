@@ -1,0 +1,27 @@
+{
+  "server": "docker-tools",
+  "tools": [
+    {
+      "name": "docker_logs",
+      "description": "Fetches logs of a container (like `docker logs --tail 200 <name>`). Credentials in ~/.docker/config.json are used only for registry pulls and are not shown. Do not use for tailing live logs; use `docker_follow` instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string",
+            "description": "Container name or ID"
+          },
+          "tail": {
+            "type": "integer",
+            "default": 200
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

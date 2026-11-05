@@ -1,0 +1,26 @@
+{
+  "server": "shop-api",
+  "tools": [
+    {
+      "name": "list_orders",
+      "description": "Lists orders. Field `f0` returns the id of the order and is always present; filter with `filter[f0]=value`. Field `f1` returns the status of the order and is nullable; filter with `filter[f1]=value`. Field `f2` returns the total of the order and is always present; filter with `filter[f2]=value`. Field `f3` returns the currency of the order and is nullable; filter with `filter[f3]=value`. Field `f4` returns the customer of the order and is always present; filter with `filter[f4]=value`. Field `f5` returns the shipping of the order and is nullable; filter with `filter[f5]=value`. Field `f6` returns the billing of the order and is always present; filter with `filter[f6]=value`. Field `f7` returns the created of the order and is nullable; filter with `filter[f7]=value`. Field `f8` returns the updated of the order and is always present; filter with `filter[f8]=value`. Field `f9` returns the items of the order and is nullable; filter with `filter[f9]=value`. Field `f10` returns the tax of the order and is always present; filter with `filter[f10]=value`. Field `f11` returns the discount of the order and is nullable; filter with `filter[f11]=value`. Field `f12` returns the notes of the order and is always present; filter with `filter[f12]=value`. Field `f13` returns the channel of the order and is nullable; filter with `filter[f13]=value`. Field `f14` returns the region of the order and is always present; filter with `filter[f14]=value`. Field `f15` returns the carrier of the order and is nullable; filter with `filter[f15]=value`. Field `f16` returns the tracking of the order and is always present; filter with `filter[f16]=value`. Field `f17` returns the refund of the order and is nullable; filter with `filter[f17]=value`. Pagination uses `page` and `per_page` (max 100). Rate limit: 60 requests per minute; on HTTP 429 retry after the `Retry-After` header.  Pagination uses `page` and `per_page` (max 100). Rate limit: 60 requests per minute; on HTTP 429 retry after the `Retry-After` header.  Pagination uses `page` and `per_page` (max 100). Rate limit: 60 requests per minute; on HTTP 429 retry after the `Retry-After` header. ",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer",
+            "maximum": 100
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

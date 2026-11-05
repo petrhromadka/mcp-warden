@@ -1,0 +1,24 @@
+{
+  "server": "cli-run",
+  "tools": [
+    {
+      "name": "run_ls",
+      "description": "Runs `ls` in a directory. Pass `--color=always` to keep colours; output then contains ANSI escape codes such as \\x1b[31m (red) and \\x1b[0m (reset) written literally as text. Use `--color=never` for plain output.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dir": {
+            "type": "string",
+            "description": "Directory"
+          },
+          "flags": {
+            "type": "string",
+            "description": "Extra flags"
+          }
+        }
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

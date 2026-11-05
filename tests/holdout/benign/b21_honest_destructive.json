@@ -1,0 +1,24 @@
+{
+  "server": "fs-admin",
+  "tools": [
+    {
+      "name": "delete_files",
+      "description": "Permanently deletes the files matching a glob. This cannot be undone; the assistant should confirm the list with the user first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "glob": {
+            "type": "string",
+            "description": "Glob pattern"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

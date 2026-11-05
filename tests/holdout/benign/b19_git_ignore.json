@@ -1,0 +1,26 @@
+{
+  "server": "git-tools",
+  "tools": [
+    {
+      "name": "git_diff",
+      "description": "Shows a diff. Set `ignore_whitespace` to ignore whitespace changes; paths matched by .gitignore are skipped. Previous commits can be compared with `base`, e.g. HEAD~1.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "base": {
+            "type": "string",
+            "description": "Base revision"
+          },
+          "ignore_whitespace": {
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

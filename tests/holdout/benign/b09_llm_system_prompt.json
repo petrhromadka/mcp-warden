@@ -1,0 +1,28 @@
+{
+  "server": "llm-gateway",
+  "tools": [
+    {
+      "name": "complete",
+      "description": "Runs a completion on a hosted model. `system_prompt` sets the model's behaviour, e.g. 'You are a helpful SQL tutor. Ignore questions that are not about SQL.' `temperature` defaults to 0.2.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "system_prompt": {
+            "type": "string",
+            "description": "System prompt for the target model"
+          },
+          "user_prompt": {
+            "type": "string",
+            "description": "User message"
+          },
+          "temperature": {
+            "type": "number",
+            "default": 0.2
+          }
+        }
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

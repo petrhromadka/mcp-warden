@@ -1,0 +1,24 @@
+{
+  "server": "wiki",
+  "tools": [
+    {
+      "name": "create_page",
+      "description": "Vytvo\u0159\u00ed str\u00e1nku wiki \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67 (Markdown). Podporuje nadpisy, tabulky a odkazy.\n<!-- TODO: document pagination and tags -->\nP\u0159\u00edklad: `# Nadpis`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "titulek": {
+            "type": "string",
+            "description": "Titulek str\u00e1nky"
+          },
+          "obsah": {
+            "type": "string",
+            "description": "Obsah v Markdownu"
+          }
+        }
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}
