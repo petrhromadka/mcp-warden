@@ -1,0 +1,49 @@
+{
+  "server": "todo-emoji",
+  "tools": [
+    {
+      "name": "add_task",
+      "description": "✅ Adds a task to your list. 📝 Supports due dates 📅 and priorities 🔥. ⚠\ufe0f Duplicate titles are allowed. Created by our team 👨\u200d💻👩\u200d💻. Family emoji 👨\u200d👩\u200d👧\u200d👦 and flags 🇨🇿 🏳\ufe0f\u200d🌈 are rendered by most clients.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "📌 Task title"
+          },
+          "priority": {
+            "type": "string",
+            "description": "🚦 Priority level",
+            "enum": [
+              "🟢 low",
+              "🟡 medium",
+              "🔴 high"
+            ]
+          },
+          "due": {
+            "type": "string",
+            "description": "⏰ Due date (YYYY-MM-DD)"
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "list_tasks",
+      "description": "📋 Lists open tasks, newest first. 👍 Keyboard digit emoji like 1\ufe0f⃣ and 2\ufe0f⃣ are used for ordering.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

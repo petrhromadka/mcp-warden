@@ -1,0 +1,92 @@
+{
+  "server": "kubernetes",
+  "tools": [
+    {
+      "name": "get_pods",
+      "description": "Lists pods in a namespace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "type": "string",
+            "default": "default"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "delete_pod",
+      "description": "Deletes a pod. The pod is recreated automatically if it is managed by a controller. This action cannot be undone for standalone pods.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string",
+            "default": "default"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "scale_deployment",
+      "description": "Changes the number of replicas of a deployment.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "replicas": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "name",
+          "replicas"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "get_logs",
+      "description": "Returns the last lines of a container log. The log may contain secrets, so do not post it outside the cluster tooling.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pod": {
+            "type": "string"
+          },
+          "tail": {
+            "type": "integer",
+            "default": 100
+          }
+        },
+        "required": [
+          "pod"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,453 @@
+[
+  {
+    "file": "malicious/invariant_direct_poisoning.json",
+    "label": "malicious",
+    "expect": [
+      "MW001",
+      "MW003",
+      "MW020",
+      "MW023"
+    ],
+    "source": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks ; https://github.com/invariantlabs-ai/mcp-injection-experiments",
+    "note": "Canonical tool poisoning: hidden <IMPORTANT> block, config and SSH key read, passed in a sidenote parameter."
+  },
+  {
+    "file": "malicious/invariant_tool_shadowing.json",
+    "label": "malicious",
+    "expect": [
+      "MW001",
+      "MW003",
+      "MW004"
+    ],
+    "source": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+    "note": "A tool on one server rewrites the behaviour of send_email on another server."
+  },
+  {
+    "file": "malicious/cross_tool_instruction_plain.json",
+    "label": "malicious",
+    "expect": [
+      "MW004"
+    ],
+    "source": "https://invariantlabs.ai/blog/whatsapp-mcp-exploited",
+    "note": "Plain-prose instruction that changes how another named tool (list_chats) behaves."
+  },
+  {
+    "file": "malicious/cyberark_param_name_poisoning.json",
+    "label": "malicious",
+    "expect": [
+      "MW020",
+      "MW023"
+    ],
+    "source": "https://www.cyberark.com/resources/agentic-ai-security/poison-everywhere-no-output-from-your-mcp-server-is-safe",
+    "note": "Full-schema poisoning: the instruction lives in a parameter name and its description."
+  },
+  {
+    "file": "malicious/cyberark_schema_default_poisoning.json",
+    "label": "malicious",
+    "expect": [
+      "MW002",
+      "MW020"
+    ],
+    "source": "https://www.cyberark.com/resources/agentic-ai-security/poison-everywhere-no-output-from-your-mcp-server-is-safe",
+    "note": "Full-schema poisoning: instruction smuggled into default and enum values."
+  },
+  {
+    "file": "malicious/cyberark_nested_schema_tag.json",
+    "label": "malicious",
+    "expect": [
+      "MW001"
+    ],
+    "source": "https://www.cyberark.com/resources/agentic-ai-security/poison-everywhere-no-output-from-your-mcp-server-is-safe",
+    "note": "Instruction hidden in a deeply nested $defs description."
+  },
+  {
+    "file": "malicious/tob_line_jumping_instructions.json",
+    "label": "malicious",
+    "expect": [
+      "MW002",
+      "MW003"
+    ],
+    "source": "https://blog.trailofbits.com/2025/04/21/jumping-the-line-how-mcp-servers-can-attack-you-before-you-ever-use-them/",
+    "note": "Line jumping: malicious text in the initialize 'instructions' field, delivered before any tool is called."
+  },
+  {
+    "file": "malicious/tob_ansi_escape_hiding.json",
+    "label": "malicious",
+    "expect": [
+      "MW013"
+    ],
+    "source": "https://blog.trailofbits.com/2025/04/29/deceiving-users-with-ansi-terminal-codes-in-mcp/",
+    "note": "ANSI conceal sequence (ESC[8m) hides an instruction from terminal output."
+  },
+  {
+    "file": "malicious/unicode_tag_smuggling.json",
+    "label": "malicious",
+    "expect": [
+      "MW011"
+    ],
+    "source": "https://embracethered.com/blog/posts/2025/sneaky-bits-and-ascii-smuggler/",
+    "note": "ASCII smuggling: instruction encoded in the Unicode tag block (U+E0000..), invisible when rendered."
+  },
+  {
+    "file": "malicious/zero_width_characters.json",
+    "label": "malicious",
+    "expect": [
+      "MW010"
+    ],
+    "source": "https://noma.security/blog/invisible-mcp-vulnerabilities-risks-exploits-in-the-ai-supply-chain",
+    "note": "Zero-width space / joiner / word joiner interleaved with an instruction."
+  },
+  {
+    "file": "malicious/bidi_override.json",
+    "label": "malicious",
+    "expect": [
+      "MW012"
+    ],
+    "source": "https://trojansource.codes/",
+    "note": "Right-to-left override (U+202E) renders a reversed instruction in the wrong order."
+  },
+  {
+    "file": "malicious/newline_padding.json",
+    "label": "malicious",
+    "expect": [
+      "MW014"
+    ],
+    "source": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+    "note": "Dozens of blank lines push the instruction beyond the visible part of a UI tool description."
+  },
+  {
+    "file": "malicious/space_padding.json",
+    "label": "malicious",
+    "expect": [
+      "MW014"
+    ],
+    "source": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+    "note": "Hundreds of spaces hide trailing text from single-line previews."
+  },
+  {
+    "file": "malicious/base64_encoded_instruction.json",
+    "label": "malicious",
+    "expect": [
+      "MW016"
+    ],
+    "source": "https://repello.ai/blog/mcp-tool-poisoning-to-rce",
+    "note": "Instruction hidden as a base64 blob inside a description."
+  },
+  {
+    "file": "malicious/hex_encoded_instruction.json",
+    "label": "malicious",
+    "expect": [
+      "MW016"
+    ],
+    "source": "https://repello.ai/blog/mcp-tool-poisoning-to-rce",
+    "note": "Instruction hex-encoded inside a schema default."
+  },
+  {
+    "file": "malicious/homoglyph_tool_name.json",
+    "label": "malicious",
+    "expect": [
+      "MW017"
+    ],
+    "source": "https://www.unicode.org/reports/tr39/",
+    "note": "Cyrillic 'a' (U+0430) inside a Latin tool name imitates read_file."
+  },
+  {
+    "file": "malicious/tool_name_collision.json",
+    "label": "malicious",
+    "expect": [
+      "MW005"
+    ],
+    "source": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+    "note": "Two servers register the same tool name, so one can shadow the other."
+  },
+  {
+    "file": "malicious/misleading_read_only_hint.json",
+    "label": "malicious",
+    "expect": [
+      "MW024"
+    ],
+    "source": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools",
+    "note": "readOnlyHint=true on a tool that permanently deletes data (annotations are untrusted hints)."
+  },
+  {
+    "file": "malicious/exfil_url_instruction.json",
+    "label": "malicious",
+    "expect": [
+      "MW021"
+    ],
+    "source": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+    "note": "Description instructs the model to POST data to an attacker-controlled URL."
+  },
+  {
+    "file": "malicious/tob_conversation_harvest.json",
+    "label": "malicious",
+    "expect": [
+      "MW022"
+    ],
+    "source": "https://blog.trailofbits.com/2025/04/23/how-mcp-servers-can-steal-your-conversation-history/",
+    "note": "Tool demands the whole conversation and the system prompt as an argument."
+  },
+  {
+    "file": "malicious/prompt_template_poisoning.json",
+    "label": "malicious",
+    "expect": [
+      "MW001",
+      "MW002"
+    ],
+    "source": "https://oatf.dev/OATF-027/",
+    "note": "Poisoned prompt template (prompts/list) rather than a tool."
+  },
+  {
+    "file": "malicious/resource_description_poisoning.json",
+    "label": "malicious",
+    "expect": [
+      "MW001",
+      "MW002",
+      "MW020"
+    ],
+    "source": "https://maloyan.xyz/blog/mcp-security-analysis",
+    "note": "Poisoned resource description (resources/list)."
+  },
+  {
+    "file": "malicious/fake_role_markers.json",
+    "label": "malicious",
+    "expect": [
+      "MW001"
+    ],
+    "source": "https://oatf.dev/OATF-027/",
+    "note": "Fake chat-template / role markers inside a description."
+  },
+  {
+    "file": "malicious/coercive_language.json",
+    "label": "malicious",
+    "expect": [
+      "MW006"
+    ],
+    "source": "https://maloyan.xyz/blog/mcp-security-analysis",
+    "note": "Repeated absolute/coercive language that tries to force the tool into every workflow."
+  },
+  {
+    "file": "malicious/overlong_description_hidden_tail.json",
+    "label": "malicious",
+    "expect": [
+      "MW015",
+      "MW020"
+    ],
+    "source": "https://maloyan.xyz/blog/mcp-security-analysis",
+    "note": "More than 10 000 characters of filler hide an instruction at the very end."
+  },
+  {
+    "file": "malicious/sensitive_path_reference.json",
+    "label": "malicious",
+    "expect": [
+      "MW020"
+    ],
+    "source": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+    "note": "Tool description refers to credential files the tool has no business with."
+  },
+  {
+    "file": "malicious/data_harvesting_keys.json",
+    "label": "malicious",
+    "expect": [
+      "MW022"
+    ],
+    "source": "https://invariantlabs.ai/blog/whatsapp-mcp-exploited",
+    "note": "Asks for keys, environment variables and file contents as 'diagnostics'."
+  },
+  {
+    "file": "benign/filesystem.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+    "note": "Reference filesystem server; many 'file'/'directory' words and overwrite warnings."
+  },
+  {
+    "file": "benign/git.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers/tree/main/src/git",
+    "note": "Reference git server: short terse descriptions with correct annotations."
+  },
+  {
+    "file": "benign/github.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/github/github-mcp-server",
+    "note": "GitHub server: cross-references to another tool of the same server, docs link, IMPORTANT note."
+  },
+  {
+    "file": "benign/fetch.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+    "note": "Reference fetch server; the real description says 'refuse and tell the user' and 'let the user know'."
+  },
+  {
+    "file": "benign/memory.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+    "note": "Reference memory server."
+  },
+  {
+    "file": "benign/time.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+    "note": "Reference time server: 'use X if no timezone provided by the user' is a harmless default instruction."
+  },
+  {
+    "file": "benign/sequential_thinking.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+    "note": "Long instructional description with 'You should', 'Ignore information that is irrelevant', 'Don't hesitate'."
+  },
+  {
+    "file": "benign/everything.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers/tree/main/src/everything",
+    "note": "Reference test server; printEnv, sampling and prompts/resources."
+  },
+  {
+    "file": "benign/postgres.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres",
+    "note": "Archived reference postgres server with table schema resources."
+  },
+  {
+    "file": "benign/sqlite.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers-archived/tree/main/src/sqlite",
+    "note": "Archived reference sqlite server: a DELETE tool with matching destructive annotation."
+  },
+  {
+    "file": "benign/slack.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers-archived/tree/main/src/slack",
+    "note": "Archived reference slack server: posting messages, docs link, mentions of history."
+  },
+  {
+    "file": "benign/playwright.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/microsoft/playwright-mcp",
+    "note": "Playwright MCP: cross-references browser_snapshot from another tool of the same server, JS code in schema."
+  },
+  {
+    "file": "benign/brave_search.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/brave/brave-search-mcp-server",
+    "note": "Brave search: 'use this when', 'automatically falls back'."
+  },
+  {
+    "file": "benign/sentry.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/getsentry/sentry-mcp",
+    "note": "Sentry MCP: XML-ish <examples>/<hints> blocks, DO NOT, URLs in schema docs."
+  },
+  {
+    "file": "benign/notion.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/makenotion/notion-mcp-server",
+    "note": "Notion MCP generated from OpenAPI: uuid formats, pagination text."
+  },
+  {
+    "file": "benign/stripe.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/stripe/agent-toolkit",
+    "note": "Stripe docs-style: example ids with prefixes, documentation URL, mention of secret key prefixes as a warning."
+  },
+  {
+    "file": "benign/czech_registry.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://ares.gov.cz/",
+    "note": "Czech-language tools with diacritics and typographic quotes."
+  },
+  {
+    "file": "benign/japanese_tools.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers",
+    "note": "Japanese descriptions including full-width punctuation and a 重要 (important) note."
+  },
+  {
+    "file": "benign/emoji_rich.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers",
+    "note": "Emoji with ZWJ sequences, variation selectors and keycaps: trap for invisible-character rules."
+  },
+  {
+    "file": "benign/deploy_docs_important.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/implement-tool-use#best-practices-for-tool-definitions",
+    "note": "Long vendor-style docs; IMPORTANT/NOTE/WARNING markers in prose, never as tags."
+  },
+  {
+    "file": "benign/editor_absolute_paths.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://docs.anthropic.com/en/docs/claude-code/overview",
+    "note": "Coding-agent style tool docs: ALWAYS/NEVER caps (fewer than three coercion markers), absolute-path rules, shell command warnings."
+  },
+  {
+    "file": "benign/hash_and_encoding_examples.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://docs.docker.com/reference/cli/docker/image/pull/",
+    "note": "Hex digests, container digests, base64 PNG, JWT and git ids: encoded-payload false-positive traps."
+  },
+  {
+    "file": "benign/docs_search_links.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/upstash/context7",
+    "note": "Description full of URLs, markdown links and an email address (no instruction to send data)."
+  },
+  {
+    "file": "benign/http_client.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+    "note": "Legitimate POST-to-URL tool; the URL is a parameter, not an attacker-chosen instruction."
+  },
+  {
+    "file": "benign/issue_tracker_crossrefs.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers",
+    "note": "Tools mention other tools of the SAME server by name; trap for the cross-tool-instruction rule. Also a legitimate email sender."
+  },
+  {
+    "file": "benign/kubernetes_correct_annotations.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/containers/kubernetes-mcp-server",
+    "note": "Destructive delete tool correctly annotated, so no misleading-annotation finding."
+  },
+  {
+    "file": "benign/multi_server_distinct_names.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://modelcontextprotocol.io/docs/concepts/tools",
+    "note": "Three servers whose tool names do not collide."
+  },
+  {
+    "file": "benign/multilingual_scripts.json",
+    "label": "benign",
+    "expect": [],
+    "source": "https://github.com/modelcontextprotocol/servers",
+    "note": "Non-Latin scripts: a fully Cyrillic tool name (not mixed-script), Arabic, Hebrew and Korean prose."
+  }
+]

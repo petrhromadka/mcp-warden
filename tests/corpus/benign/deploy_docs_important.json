@@ -1,0 +1,58 @@
+{
+  "server": "cloud-deploy",
+  "tools": [
+    {
+      "name": "deploy_service",
+      "description": "Deploys a service to the selected environment.\n\nIMPORTANT: Always confirm the target environment with the user before deploying to production.\nIMPORTANT: Do not deploy when the test suite is failing.\n\nNOTE: Deployments are asynchronous. Poll `get_deployment_status` until the state is `ready` or `failed`.\nWARNING: Rolling back removes the newest release; this cannot be undone.\n\nSee https://docs.example.com/deploy for details, and https://status.example.com for incidents.\n\nExamples:\n  deploy_service(service=\"api\", env=\"staging\")\n  deploy_service(service=\"web\", env=\"production\", wait=true)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string",
+            "description": "Service name as shown in the dashboard"
+          },
+          "env": {
+            "type": "string",
+            "description": "Target environment",
+            "enum": [
+              "dev",
+              "staging",
+              "production"
+            ]
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "Block until the deployment finishes",
+            "default": false
+          }
+        },
+        "required": [
+          "service",
+          "env"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true
+      }
+    },
+    {
+      "name": "get_deployment_status",
+      "description": "Returns the state of the latest deployment. IMPORTANT: results can be cached for up to 30 seconds.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "service"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

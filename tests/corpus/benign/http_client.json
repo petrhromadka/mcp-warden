@@ -1,0 +1,46 @@
+{
+  "server": "http-client",
+  "tools": [
+    {
+      "name": "http_request",
+      "description": "Sends an HTTP request and returns the status, headers and body. Use method POST or PUT with a JSON body to send data to the given URL, for example to call a webhook the user provided. Only call URLs the user mentioned or that are listed in the project's documentation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Absolute URL, e.g. https://api.example.com/v1/items"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "DELETE"
+            ],
+            "default": "GET"
+          },
+          "body": {
+            "type": "string",
+            "description": "Request body, usually JSON"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    }
+  ]
+}
