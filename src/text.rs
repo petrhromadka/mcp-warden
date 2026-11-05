@@ -312,10 +312,6 @@ pub fn collect(surface: &ServerSurface) -> Collected<'_> {
                 d,
             );
         }
-        c.schema(&tool.input_schema, &format!("{base}/inputSchema"), owner);
-        if let Some(schema) = &tool.output_schema {
-            c.schema(schema, &format!("{base}/outputSchema"), owner);
-        }
     }
     for prompt in &surface.prompts {
         let base = join("prompts", &prompt.name);
@@ -387,6 +383,16 @@ pub fn collect(surface: &ServerSurface) -> Collected<'_> {
                 owner,
                 d,
             );
+        }
+    }
+    // Schemas last: they are the only part whose size the server controls per item, so one huge
+    // schema must not use up the field cap before other tools' names and descriptions are read.
+    for tool in &surface.tools {
+        let base = join("tools", &tool.name);
+        let owner = Some(tool.name.as_str());
+        c.schema(&tool.input_schema, &format!("{base}/inputSchema"), owner);
+        if let Some(schema) = &tool.output_schema {
+            c.schema(schema, &format!("{base}/outputSchema"), owner);
         }
     }
     if c.full {
@@ -615,6 +621,32 @@ mod tests {
         let c = collect(&surface);
         let leaf = c.fields.iter().find(|f| f.text == "leaf").unwrap();
         assert!(leaf.pointer.len() < 1024, "{}", leaf.pointer.len());
+    }
+
+    #[test]
+    fn huge_schema_cannot_starve_later_tool_descriptions() {
+        let values: Vec<Value> = (0..=MAX_TEXT_FIELDS)
+            .map(|i| json!(format!("v{i}")))
+            .collect();
+        let surface = ServerSurface {
+            server: "s".into(),
+            tools: vec![
+                Tool {
+                    name: "a".into(),
+                    input_schema: json!({"properties": {"x": {"enum": values}}}),
+                    ..Tool::default()
+                },
+                Tool {
+                    name: "b".into(),
+                    description: Some("payload".into()),
+                    ..Tool::default()
+                },
+            ],
+            ..ServerSurface::default()
+        };
+        let c = collect(&surface);
+        assert!(c.fields.iter().any(|f| f.text == "payload"));
+        assert_eq!(c.limits.len(), 1);
     }
 
     #[test]

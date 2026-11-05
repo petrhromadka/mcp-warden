@@ -93,7 +93,7 @@ pub const RULES: &[RuleInfo] = &[
     RuleInfo {
         id: "MW018",
         name: "schema-limits-exceeded",
-        severity: Severity::Medium,
+        severity: Severity::High,
         summary: "A schema nests deeper than 64 levels or a server has more than 100000 text fields.",
         help: "mcp-warden reads schemas down to 64 levels and at most 100000 strings per \
                server; anything beyond that was not scanned, so text there could hide \
@@ -171,7 +171,7 @@ pub fn check_surface(surface: &ServerSurface, collected: &Collected<'_>) -> Vec<
     out.extend(collected.limits.iter().map(|limit| {
         Finding {
             rule_id: "MW018",
-            severity: Severity::Medium,
+            severity: Severity::High,
             server: surface.server.clone(),
             message: format!("Part of the server was not scanned: {}", limit.reason),
             evidence: limit
@@ -879,7 +879,7 @@ mod tests {
         let findings = check(&[surface]);
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(findings[0].rule_id, "MW018");
-        assert_eq!(findings[0].severity, Severity::Medium);
+        assert_eq!(findings[0].severity, Severity::High);
         assert_eq!(
             findings[0].location.pointer.as_deref(),
             Some("tools/read_file/inputSchema")

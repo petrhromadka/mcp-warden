@@ -701,12 +701,12 @@ fn check_secrets(cfg: &ServerConfig, out: &mut Vec<Finding>) {
             }
             if let Some((idx, script)) = script
                 && !reported.contains(&idx)
-                && script_secret_assignment(&script)
+                && (script_secret_assignment(&script) || redact_text(&script) != script)
             {
                 report(
                     format!("/args/{idx}"),
                     format!("Argument {idx}"),
-                    "secret-named assignment in an inline script",
+                    "secret in an inline script",
                     redact_text(&script),
                 );
             }
@@ -1775,6 +1775,16 @@ mod tests {
                 assert!(!format!("{f:?}").contains(secret), "{secret} leaked: {f:?}");
             }
         }
+    }
+
+    #[test]
+    fn inline_script_secret_flags_trigger_mw100() {
+        let token = format!("SECRET{}", "n4".repeat(6));
+        let script = format!("node s.js --token {token}");
+        let f = check(&[stdio("bash", &["-c", &script], &[])]);
+        let mw100: Vec<_> = f.iter().filter(|x| x.rule_id == "MW100").collect();
+        assert_eq!(mw100.len(), 1, "{f:?}");
+        assert!(f.iter().all(|x| !x.evidence.contains(&token)));
     }
 
     #[test]

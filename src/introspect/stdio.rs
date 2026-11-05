@@ -82,9 +82,25 @@ pub(super) fn run(
     terminate(&mut spawned);
 
     result.map_err(|e| match tail.collect() {
-        Some(stderr) => format!("{e} (server stderr: {stderr})"),
+        Some(stderr) => format!(
+            "{e} (server stderr: {})",
+            mask_configured_values(&stderr, env)
+        ),
         None => e.to_string(),
     })
+}
+
+/// A server may echo the secrets it was given; mask every configured env value (4+ chars).
+fn mask_configured_values(text: &str, env: &BTreeMap<String, String>) -> String {
+    let mut values: Vec<&str> = env
+        .values()
+        .map(String::as_str)
+        .filter(|v| v.chars().count() >= 4)
+        .collect();
+    values.sort_by_key(|v| std::cmp::Reverse(v.len()));
+    values
+        .into_iter()
+        .fold(text.to_owned(), |acc, v| acc.replace(v, "***"))
 }
 
 struct Spawned {
@@ -385,6 +401,18 @@ mod tests {
             ("API_KEY".to_owned(), "k".to_owned()),
         ]);
         assert_eq!(env, expected);
+    }
+
+    #[test]
+    fn configured_env_values_are_masked_in_stderr() {
+        let env = BTreeMap::from([
+            ("API_KEY".to_owned(), "hunter2hunter2".to_owned()),
+            ("MODE".to_owned(), "x".to_owned()),
+        ]);
+        assert_eq!(
+            mask_configured_values("token is hunter2hunter2, mode x", &env),
+            "token is ***, mode x"
+        );
     }
 
     #[test]
