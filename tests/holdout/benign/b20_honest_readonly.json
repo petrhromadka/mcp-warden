@@ -1,0 +1,24 @@
+{
+  "server": "clock",
+  "tools": [
+    {
+      "name": "current_time",
+      "description": "Returns the current time in a given IANA time zone. Does not modify anything.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tz": {
+            "type": "string",
+            "description": "Time zone, e.g. Europe/Prague"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

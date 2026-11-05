@@ -1,0 +1,27 @@
+{
+  "server": "bintools",
+  "tools": [
+    {
+      "name": "hexdump",
+      "description": "Prints a hex dump of a file like `00000000  7f 45 4c 46 02 01 01 00  |.ELF....|`. Accepts offsets such as 0xDEADBEEF and byte strings like 48656c6c6f.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path"
+          },
+          "offset": {
+            "type": "string",
+            "description": "Offset, e.g. 0x10"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

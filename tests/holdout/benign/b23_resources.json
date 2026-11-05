@@ -1,0 +1,17 @@
+{
+  "server": "project-res",
+  "tools": [],
+  "prompts": [],
+  "resources": [
+    {
+      "uri": "file:///app/.env.example",
+      "name": ".env.example",
+      "description": "Template listing the environment variables the app needs (DATABASE_URL, SECRET_KEY). Contains placeholder values only."
+    },
+    {
+      "uri": "file:///app/README.md",
+      "name": "README",
+      "description": "Project readme."
+    }
+  ]
+}

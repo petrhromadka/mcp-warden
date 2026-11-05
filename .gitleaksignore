@@ -1,0 +1,3 @@
+# Fake credentials in unit tests that check redaction (src/rules/config_rules.rs).
+138c7848dab5578943b9d471179c4a921bb0f1d4:src/rules/config_rules.rs:curl-auth-header:1729
+138c7848dab5578943b9d471179c4a921bb0f1d4:src/rules/config_rules.rs:curl-auth-header:1764

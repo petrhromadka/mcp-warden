@@ -1,0 +1,26 @@
+{
+  "numStartups": 3,
+  "mcpServers": {
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/github-mcp", 8080, true],
+      "env": { "TOKEN": "dummy-token", "DEBUG": 1 },
+      "cwd": "/work"
+    }
+  },
+  "projects": {
+    "/work/app": {
+      "allowedTools": [],
+      "mcpServers": {
+        "docs": {
+          "type": "http",
+          "url": "https://mcp.example.com/mcp",
+          "headers": { "Authorization": "Bearer dummy" }
+        },
+        "off": { "command": "node", "args": ["srv.js"], "disabled": true }
+      }
+    },
+    "/work/empty": {}
+  }
+}

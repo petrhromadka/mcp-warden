@@ -1,0 +1,91 @@
+[
+  {
+    "server": "pogoda",
+    "tools": [
+      {
+        "name": "получить_погоду",
+        "description": "Возвращает текущую погоду в городе. Температура в градусах Цельсия. Пример: «Москва».",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "город": {
+              "type": "string",
+              "description": "Название города"
+            }
+          },
+          "required": [
+            "город"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        }
+      }
+    ]
+  },
+  {
+    "server": "arabic-hebrew",
+    "tools": [
+      {
+        "name": "search_arabic",
+        "description": "البحث في المستندات العربية. يرجى إدخال كلمة البحث.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "كلمة البحث"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        }
+      },
+      {
+        "name": "search_hebrew",
+        "description": "חיפוש במסמכים בעברית. נא להזין מילת חיפוש.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        }
+      }
+    ]
+  },
+  {
+    "server": "korean-tools",
+    "tools": [
+      {
+        "name": "translate_ko",
+        "description": "한국어를 영어로 번역합니다. 최대 5000자까지 지원합니다.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        }
+      }
+    ]
+  }
+]

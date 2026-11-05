@@ -1,0 +1,14 @@
+model = "example"
+
+[mcp_servers.local]
+command = "uvx"
+args = ["srv", "--flag"]
+cwd = "/srv"
+
+[mcp_servers.local.env]
+API_KEY = "dummy"
+
+[mcp_servers.remote]
+url = "https://codex.example.com/mcp"
+http_headers = { "X-Key" = "dummy" }
+enabled = false

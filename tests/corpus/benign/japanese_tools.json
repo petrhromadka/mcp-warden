@@ -1,0 +1,49 @@
+{
+  "server": "tenki",
+  "tools": [
+    {
+      "name": "get_weather_jp",
+      "description": "指定した都市の現在の天気と今後24時間の予報を取得します。都市名は日本語または英語で指定できます（例：東京、大阪、Sapporo）。気温は摂氏で返されます。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string",
+            "description": "都市名（例：東京）"
+          },
+          "days": {
+            "type": "integer",
+            "description": "予報日数（1〜7）",
+            "minimum": 1,
+            "maximum": 7
+          }
+        },
+        "required": [
+          "city"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search_notes_jp",
+      "description": "ノートをキーワードで検索します。最大20件まで返します。重要：検索語は短く具体的にしてください。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "検索キーワード"
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

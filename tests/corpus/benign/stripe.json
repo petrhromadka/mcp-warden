@@ -1,0 +1,107 @@
+{
+  "server": "stripe",
+  "tools": [
+    {
+      "name": "create_customer",
+      "description": "This tool will create a customer in Stripe.\n\nIt takes two arguments:\n- name (str): The name of the customer.\n- email (str, optional): The email address of the customer.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the customer"
+          },
+          "email": {
+            "type": "string",
+            "description": "The email of the customer"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "create_payment_link",
+      "description": "This tool will create a payment link in Stripe.\n\nIt takes two arguments:\n- price (str): The ID of the price to create the payment link for.\n- quantity (int): The quantity of the product to include.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "string",
+            "description": "The ID of the price to create the payment link for, e.g. price_1MoBy5LkdIwHu7ixZhnattbh"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "The quantity of the product to include."
+          }
+        },
+        "required": [
+          "price",
+          "quantity"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "list_invoices",
+      "description": "This tool will fetch a list of Invoices from Stripe.\n\nIt takes two arguments:\n- customer (str, optional): The ID of the customer, e.g. cus_NeZwdNtLEOXuvB.\n- limit (int, optional): The number of invoices to return (1-100).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search_documentation",
+      "description": "Search the Stripe documentation (https://docs.stripe.com) for the given question and return the relevant sections. Always cite the page URL in the answer. Never include secret keys (sk_live_...) in a question.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question to search for, in natural language"
+          },
+          "language": {
+            "type": "string",
+            "description": "Programming language of the code samples",
+            "enum": [
+              "node",
+              "python",
+              "java",
+              "php",
+              "ruby",
+              "go",
+              "dotnet",
+              "curl"
+            ]
+          }
+        },
+        "required": [
+          "question"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

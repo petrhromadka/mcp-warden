@@ -1,0 +1,89 @@
+{
+  "server": "tracker",
+  "tools": [
+    {
+      "name": "get_issue",
+      "description": "Fetches one issue by key (e.g. ENG-123). If you do not know the key, call `search_issues` first; to see comments, use `list_comments` afterwards.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search_issues",
+      "description": "Searches issues with a query. Combine with `get_issue` to read full details. Results are sorted by relevance.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list_comments",
+      "description": "Lists the comments of an issue. The issue must exist, otherwise `get_issue` returns an error.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "send_digest_email",
+      "description": "Sends a daily digest of open issues by email to the given address. Does not send anything without an explicit recipient.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recipient": {
+            "type": "string",
+            "description": "Email address of the recipient"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipient"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "server": "docs-search",
+  "tools": [
+    {
+      "name": "search_docs",
+      "description": "Searches the official documentation and returns links. Results look like [Getting started](https://docs.example.com/start), [API reference](https://docs.example.com/api#auth) and https://docs.example.com/changelog. For authentication help see https://docs.example.com/auth. Questions? Contact support@example.com or open an issue at https://github.com/example/docs/issues.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "Docs version, e.g. v2.3.1 or latest",
+            "default": "latest"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

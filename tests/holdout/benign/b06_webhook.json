@@ -1,0 +1,25 @@
+{
+  "server": "hooks",
+  "tools": [
+    {
+      "name": "send_webhook",
+      "description": "POSTs a JSON payload to a webhook URL provided by the user, e.g. https://hooks.example.com/services/T000/B000/XXXX. Returns the HTTP status and first 1 KB of the response.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Destination webhook URL"
+          },
+          "payload": {
+            "type": "object",
+            "description": "JSON body"
+          }
+        }
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

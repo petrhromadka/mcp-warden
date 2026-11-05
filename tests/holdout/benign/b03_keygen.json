@@ -1,0 +1,24 @@
+{
+  "server": "keytool",
+  "tools": [
+    {
+      "name": "generate_ssh_key",
+      "description": "Generates a new ed25519 key pair and writes id_ed25519 and id_ed25519.pub into ~/.ssh with mode 0600. Returns only the public key and fingerprint.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "comment": {
+            "type": "string",
+            "description": "Key comment"
+          },
+          "passphrase_prompt": {
+            "type": "boolean",
+            "description": "Ask for a passphrase interactively"
+          }
+        }
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

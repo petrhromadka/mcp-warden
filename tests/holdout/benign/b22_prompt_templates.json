@@ -1,0 +1,22 @@
+{
+  "server": "review-prompts",
+  "instructions": "Prompts here are templates; fill the arguments from the user's message.",
+  "tools": [],
+  "prompts": [
+    {
+      "name": "code_review",
+      "description": "Review a diff. You are a careful reviewer: first summarise the change, then list bugs, then suggest tests. Do not rewrite the code unless asked.",
+      "arguments": [
+        {
+          "name": "diff",
+          "description": "Unified diff to review"
+        },
+        {
+          "name": "focus",
+          "description": "Area to focus on, e.g. security"
+        }
+      ]
+    }
+  ],
+  "resources": []
+}

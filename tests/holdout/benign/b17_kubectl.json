@@ -1,0 +1,27 @@
+{
+  "server": "kube",
+  "tools": [
+    {
+      "name": "kubectl_get",
+      "description": "Runs `kubectl get` for a resource type. Uses the current context from ~/.kube/config or the KUBECONFIG variable; the file contents and tokens are never returned.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "e.g. pods, deployments"
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

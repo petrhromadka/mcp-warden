@@ -1,0 +1,24 @@
+{
+  "server": "slackbot",
+  "tools": [
+    {
+      "name": "post_message",
+      "description": "Posts a message to a Slack channel (e.g. #deploys) or sends a direct message to @user. Supports mrkdwn. Do not use this tool to read history; use `get_channel_history` instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel name or ID"
+          },
+          "text": {
+            "type": "string",
+            "description": "Message text"
+          }
+        }
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}

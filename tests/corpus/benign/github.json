@@ -1,0 +1,196 @@
+{
+  "server": "github",
+  "tools": [
+    {
+      "name": "create_issue",
+      "description": "Create a new issue in a GitHub repository. Use `search_issues` first to avoid duplicates.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner (username or organization)"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "title": {
+            "type": "string",
+            "description": "Issue title"
+          },
+          "body": {
+            "type": "string",
+            "description": "Issue body in Markdown"
+          },
+          "labels": {
+            "type": "array",
+            "description": "Labels to apply to this issue",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "title"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "search_repositories",
+      "description": "Search for GitHub repositories. Supports qualifiers such as `language:rust stars:>100`. See https://docs.github.com/en/search-github/searching-on-github/searching-for-repositories for the query syntax.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (min 1)"
+          },
+          "perPage": {
+            "type": "number",
+            "description": "Results per page for pagination (min 1, max 100)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_file_contents",
+      "description": "Get the contents of a file or directory from a GitHub repository.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to file/directory, e.g. src/main.rs"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Git ref (branch, tag or commit SHA); defaults to the default branch"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "path"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create_pull_request",
+      "description": "Create a new pull request in a GitHub repository. IMPORTANT: ask the user to confirm the title and the base branch before calling this tool.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "head": {
+            "type": "string",
+            "description": "The name of the branch where your changes are implemented"
+          },
+          "base": {
+            "type": "string",
+            "description": "The name of the branch you want the changes pulled into"
+          },
+          "draft": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "title",
+          "head",
+          "base"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "push_files",
+      "description": "Push multiple files to a GitHub repository in a single commit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "description": "Commit message"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "content"
+              ]
+            }
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "branch",
+          "message",
+          "files"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    }
+  ]
+}

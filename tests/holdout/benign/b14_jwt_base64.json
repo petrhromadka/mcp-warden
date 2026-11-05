@@ -1,0 +1,23 @@
+{
+  "server": "codec",
+  "tools": [
+    {
+      "name": "decode_token",
+      "description": "Decodes a JWT without verifying it and shows header and claims. Example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c. Also decodes base64, e.g. SGVsbG8sIHdvcmxkIQ== decodes to 'Hello, world!'.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "JWT or base64 string"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": []
+}
